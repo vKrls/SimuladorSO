@@ -1,0 +1,88 @@
+Process:
+    Memoria (text, data, heap, stak).
+
+    Requerimientos:
+        - Memoria:
+            - Tamaño del programa ejecutable.
+            - Tamaño del segmento data requerido.
+            - Memoria variable a asignar durante la ejecución del proceso.
+        - Memoria previamente segmentada en bloques (multiplos de 2).
+        - Proceso previamente segmentado en bloques (multiplos de 2).
+        - Bloque memoria = Bloque proceso.
+        - Desperdicios de memoria: bloques que no han sido ocupados totalmente.
+        - Verificar que se tiene el total de memoria requerida:
+            - Por el proceso.
+            - Controlar los bloques de memoria libres y ocupados. Hacerlo constantemente.
+            - Controlar que el desperdicio sea mínimo. Hacerlo constantemente.
+            - Para todos los casos debe durar todo el tiempo que la simulación se encuentre activa.
+
+    Atributos:
+        - ProcessID             (unsigned int)
+        - Name                  (String)
+        - Type                  (String)
+        - PCB                   (Class)
+        - TextSize              (double - Bytes)
+        - DataSize              (double - Bytes)
+        - HeapSize              (double - Bytes)
+        - StackSize             (double - Bytes)
+
+
+simulador_so/
+│
+├── main.py
+│
+├── config/
+│   ├── settings.py
+│   └── constants.py
+│
+├── models/
+│   ├── proceso.py
+│   ├── pcb.py
+│   ├── memoria_bloque.py
+│   ├── interrupcion.py
+│   ├── dispositivo_io.py
+│   └── estadistica_proceso.py
+│
+├── core/
+│   ├── simulator.py
+│   ├── process_manager.py
+│   ├── memory_manager.py
+│   ├── io_manager.py
+│   ├── interrupt_manager.py
+│   ├── dispatcher.py
+│   └── cpu.py
+│
+├── schedulers/
+│   ├── scheduler_base.py
+│   ├── scheduler_fcfs.py
+│   ├── scheduler_sjf.py
+│   ├── scheduler_round_robin.py
+│   └── scheduler_prioridad.py
+│
+├── queues/
+│   ├── process_queue.py
+│   ├── ready_queue.py
+│   ├── blocked_queue.py
+│   ├── io_queue.py
+│   └── finished_queue.py
+│
+├── gui/
+│   ├── main_window.py
+│   ├── process_panel.py
+│   ├── memory_panel.py
+│   ├── cpu_panel.py
+│   ├── queue_panel.py
+│   ├── io_panel.py
+│   ├── statistics_panel.py
+│   └── log_panel.py
+│
+├── services/
+│   ├── process_generator.py
+│   ├── random_event_generator.py
+│   ├── statistics_service.py
+│   └── logger_service.py
+│
+└── utils/
+    ├── validators.py
+    ├── time_utils.py
+    └── formatters.py
