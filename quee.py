@@ -1332,7 +1332,7 @@ class FCFSWindow(QMainWindow):
         if not finished:
             return
 
-        # Calcular métricas
+        # Calcular métricas resize
         total_wt = sum(p.waiting_time for p in finished)
         total_tat = sum(p.turnaround_time for p in finished)
         total_resp = sum(p.response_time for p in finished if p.response_time >= 0)

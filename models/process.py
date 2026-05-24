@@ -1,20 +1,17 @@
+from dataclasses import dataclass
+
 from models.pcb import Pcb
+from models.cpu_context import Cpu_Context
+from models.info_scheduler import Info_Scheduler
+from models.info_io import Info_Io
+from models.info_error import Info_Error
 
-class Process():
-    def __init__(self, pcb: Pcb, name: str, type: str, text_size: int, data_size: int, heap_size: int, stack_size: int, total_size: int, total_instructions: int, requested_resources: list[str]):
-        self.pcb = pcb
-        self.name = name
-        self.type = type
-        self.text_size = text_size
-        self.data_size = data_size
-        self.heap_size = heap_size
-        self.stack_size = stack_size
-        self.total_size = total_size
-        self.total_instructions = total_instructions
-        self.requested_resources = requested_resources
-
-    def progressPercentage(self):
-        pass
-
-    def isTerminated(self):
-        pass
+@dataclass
+class Process:
+    name: str
+    
+    pcb: Pcb
+    cpu_context: Cpu_Context
+    info_scheduler: Info_Scheduler
+    info_io: Info_Io
+    info_error: Info_Error

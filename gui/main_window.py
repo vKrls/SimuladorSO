@@ -2,9 +2,9 @@ import sys
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QPushButton, QVBoxLayout, QFrame, QLabel
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 
-#from gui.fcfs_window import FCFS_Window
-from fcfs_window import FCFS_Window
+from gui.fcfs_window import FCFS_Window
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -13,6 +13,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Hola")
         self.resize(600, 400)
 
+        self.show_main_menu()
+
+
+    def show_main_menu(self):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
@@ -53,11 +57,16 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(title, 1)
         main_layout.addWidget(btn_panel, 4)
 
+        self.resize(600, 400)
+        self.center_window()
+
 
     def fcfs_window(self):
-        fcfs_win = FCFS_Window()
+        fcfs_win = FCFS_Window(self)
 
         self.setCentralWidget(fcfs_win)
+        self.resize(1380, 860)
+        self.center_window()
 
 
     def sjf_window(self):
@@ -72,7 +81,18 @@ class MainWindow(QMainWindow):
         print("Hola pr")
 
 
+    def center_window(self):
+        screen = QApplication.primaryScreen().availableGeometry()
+        window = self.geometry()
+
+        center = screen.center()
+        window.moveCenter(center)
+
+        self.move(window.topLeft())
+
+
 app = QApplication(sys.argv)
+app.setFont(QFont(".AppleSystemUIFont", 10))
 
 window = MainWindow()
 window.show()
