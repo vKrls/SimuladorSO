@@ -435,7 +435,7 @@ void print_memory(struct MemoryList *m) {
 	struct Block *tmp = m->head;
 
 	while (tmp != NULL) {
-		printf("[%d] -> ", tmp->owner);
+		printf("[%-4d] -> ", tmp->owner);
 		tmp = tmp->next;
 	}
 
@@ -444,7 +444,7 @@ void print_memory(struct MemoryList *m) {
 	tmp = m->head;
 
 	while (tmp != NULL) {
-		printf(" %d    ", tmp->start);
+		printf("%-10d", tmp->start);
 		tmp = tmp->next;
 	}
 
@@ -523,7 +523,7 @@ struct Pcb create_pcb(struct Simulator *s, char *name, int mem_kb,
 
 void print_pcb(struct Pcb *p)
 {
-	printf("NAME: %s | PID: %d | Mem_req: %d | Burst: %.2f | Arrival: %.2f |, Blocks Needed: %d | Blocks: %d\n",
+	printf("%-10s %-10d %-10d %-10.2f %-10.2f %-10d %-10d\n",
 		p->name, p->pid, p->mem.required_kb, p->sched.burst_time, p->sched.arrival_time,
 		(p->mem.required_kb + BLOCK_SIZE - 1) / BLOCK_SIZE, p->mem.assigned_blocks);
 }
@@ -627,16 +627,25 @@ int main() {
 	}
 	
 	printf("\nProcess_q:\n");
+	printf("%-10s %-10s %-10s %-10s %-10s %-10s %-10s\n", "Name", "Pid", "Mem_req", "Burst", "Arrival", "B_needed", "Blocks");
 	print_queue(&simulator.process_q);
 
 	admit_ready_q(&simulator);
 	printf("\nadmit_ready_q\n");
 	
 	printf("\nReady_q:\n");
+	printf("%-10s %-10s %-10s %-10s %-10s %-10s %-10s\n", "Name", "Pid", "Mem_req", "Burst", "Arrival", "B_needed", "Blocks");
 	print_queue(&simulator.ready_q);
 
 	printf("\nMemory List:\n");
 	print_memory(&simulator.memory_list);
+
+	while (true) {
+		
+
+		/* Un tick = 1/20 segundos */
+		usleep(50000);
+	}
 
 	return 0;
 }
