@@ -1,8 +1,7 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 @dataclass
 class Cpu_Context:
-    registers: dict[str, int] = field(default_factory=dict[str, int])
-    accumulator: int = 0
-    instruction_register: str = ""
+    program_counter: int = 0
     stack_pointer: int = 0
+    cpu_state: str = "IDLE"

@@ -14,7 +14,7 @@ from gui.components.footer import Footer
 
 from models.process_data import Process_Data
 
-class FCFS_Window(QWidget):
+class SJFn_Window(QWidget):
     def __init__(self, main_window: "MainWindow", simulator: Simulator):
         super().__init__()
         self.simulator = simulator
@@ -36,8 +36,8 @@ class FCFS_Window(QWidget):
     def _header(self):
         header = Header()
         
-        header.title.setText("FCFS")
-        header.desc.setText("First Come, First Serve")
+        header.title.setText("SJF")
+        header.desc.setText("Shortest Job First No Apropiativo")
 
         header.btn_back.clicked.connect(self.go_back)
 
@@ -57,7 +57,7 @@ class FCFS_Window(QWidget):
     
     def _footer(self):
         footer = Footer()
-        footer.algorithm.setText("FCFS (no apropiativo)")
+        footer.algorithm.setText("SJF (no apropiativo)")
 
         return footer
     

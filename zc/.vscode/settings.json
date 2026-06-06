@@ -1,0 +1,13 @@
+{
+  "[c]": {
+    "editor.guides.bracketPairs": false,
+    "editor.guides.bracketPairsHorizontal": false,
+    "editor.bracketPairColorization.enabled": false,
+    "editor.guides.indentation": false,
+    "editor.insertSpaces": false,
+    "editor.tabSize": 8,
+    "editor.detectIndentation": false,
+    "editor.rulers": [80],
+    "editor.formatOnSave": false
+  }
+}

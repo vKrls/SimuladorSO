@@ -1,6 +1,6 @@
 import random
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QDoubleSpinBox
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -14,7 +14,7 @@ from gui.components.footer import Footer
 
 from models.process_data import Process_Data
 
-class FCFS_Window(QWidget):
+class RR_Window(QWidget):
     def __init__(self, main_window: "MainWindow", simulator: Simulator):
         super().__init__()
         self.simulator = simulator
@@ -31,13 +31,19 @@ class FCFS_Window(QWidget):
         main_layout.addWidget(self.header, 1)
         main_layout.addWidget(self.center, 8)
         main_layout.addWidget(self.footer, 1)
-    
+
 
     def _header(self):
         header = Header()
         
-        header.title.setText("FCFS")
-        header.desc.setText("First Come, First Serve")
+        header.title.setText("RR")
+        header.desc.setText("Round Robin")
+
+        self.quantum = QDoubleSpinBox()
+        self.quantum.setMinimum(1)
+        self.quantum.setMaximum(999999)
+        self.quantum.setValue(10.0)
+        self.quantum.setSuffix(" u.t.")
 
         header.btn_back.clicked.connect(self.go_back)
 
@@ -45,7 +51,7 @@ class FCFS_Window(QWidget):
     
 
     def _center(self):
-        center = Center(self.simulator)
+        center = Center(self.simulator, "rr")
 
         process_input = center.process_input
 
@@ -57,7 +63,7 @@ class FCFS_Window(QWidget):
     
     def _footer(self):
         footer = Footer()
-        footer.algorithm.setText("FCFS (no apropiativo)")
+        footer.algorithm.setText("RR (apropiativo)")
 
         return footer
     

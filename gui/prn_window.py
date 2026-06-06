@@ -14,7 +14,7 @@ from gui.components.footer import Footer
 
 from models.process_data import Process_Data
 
-class FCFS_Window(QWidget):
+class PRn_Window(QWidget):
     def __init__(self, main_window: "MainWindow", simulator: Simulator):
         super().__init__()
         self.simulator = simulator
@@ -36,8 +36,8 @@ class FCFS_Window(QWidget):
     def _header(self):
         header = Header()
         
-        header.title.setText("FCFS")
-        header.desc.setText("First Come, First Serve")
+        header.title.setText("Prioridades No Apropiativo")
+        header.desc.setText("Por prioridad")
 
         header.btn_back.clicked.connect(self.go_back)
 
@@ -45,7 +45,7 @@ class FCFS_Window(QWidget):
     
 
     def _center(self):
-        center = Center(self.simulator)
+        center = Center(self.simulator, "pr")
 
         process_input = center.process_input
 
@@ -57,7 +57,7 @@ class FCFS_Window(QWidget):
     
     def _footer(self):
         footer = Footer()
-        footer.algorithm.setText("FCFS (no apropiativo)")
+        footer.algorithm.setText("PRIORIDADES (no apropiativo)")
 
         return footer
     
@@ -75,13 +75,16 @@ class FCFS_Window(QWidget):
             cpu_burst = random.randint(10, 50)
             memory = random.randint(1, 16) * 2
             arrival_time = random.randint(1, 50)
+            priority = random.randint(0, 5)
 
             process_data = Process_Data(
                 name=name,
                 cpu_burst=cpu_burst,
                 memory=memory,
-                arrival_time=arrival_time
+                arrival_time=arrival_time,
             )
+
+            process_data.priority = priority
 
             pcb = self.simulator.process_manager.create_process(process_data)
             self.center.process_queue.add_process_card(pcb)
