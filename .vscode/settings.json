@@ -1,8 +1,4 @@
-{
-  "window.titleBarStyle": "custom",
-  "window.autoDetectColorScheme": false,
-  "workbench.colorTheme": "Dark 2026",
-  
+{ 
   "[c]": {
     "editor.guides.bracketPairs": false,
     "editor.guides.bracketPairsHorizontal": false,

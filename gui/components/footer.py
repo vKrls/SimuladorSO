@@ -1,64 +1,58 @@
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel
-from PySide6.QtCore import Qt
+from __future__ import annotations
 
-process_style = """color: #03A9F4;"""
-memory_style = """color: #FFC107;"""
-algorithm_style = """color: #03A9F4;"""
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel
+
 
 class Footer(QFrame):
     def __init__(self) -> None:
         super().__init__()
+        self.setObjectName("panel")
+        self.setFixedHeight(44)
 
-        self.setFixedHeight(52)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 0, 12, 0)
+        layout.setSpacing(14)
 
-        layout = QHBoxLayout()
-        layout.setContentsMargins(16, 0, 16, 0)
-        layout.setSpacing(12)
-        self.setLayout(layout)
- 
-        label_cpu = QLabel("Cpu →")
-        label_cpu.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.cpu = QLabel("-")
-        self.cpu.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.cpu.setFixedWidth(50)
-
-        layout.addWidget(label_cpu)
+        layout.addWidget(self._plain("CPU ->"))
+        self.cpu = self._value("--", "#7bc67e", width=90)
         layout.addWidget(self.cpu)
 
-        label_process = QLabel("Procesos:")
-        label_process.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.process = QLabel("0")
-        self.process.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.process.setStyleSheet(process_style)
-
-        layout.addWidget(label_process)
+        layout.addWidget(self._sep())
+        layout.addWidget(self._plain("Procesos:"))
+        self.process = self._value("0", "#00d4ff")
         layout.addWidget(self.process)
 
-        label_finished = QLabel("Terminados:")
-        label_finished.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.finished = QLabel("0")
-        self.finished.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.finished.setStyleSheet(process_style)
-
-        layout.addWidget(label_finished)
+        layout.addWidget(self._sep())
+        layout.addWidget(self._plain("Terminados:"))
+        self.finished = self._value("0", "#7bc67e")
         layout.addWidget(self.finished)
 
-        label_memory = QLabel("Memoria libre:")
-        label_memory.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.memory = QLabel("4096 KB")
-        self.memory.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.memory.setStyleSheet(memory_style)
-
-        layout.addWidget(label_memory)
+        layout.addWidget(self._sep())
+        layout.addWidget(self._plain("Memoria libre:"))
+        self.memory = self._value("4096 KB", "#c77dff", width=90)
         layout.addWidget(self.memory)
 
         layout.addStretch()
-
-        label_algorithm = QLabel("Algoritmo:")
-        label_algorithm.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.algorithm = QLabel("-")
-        self.algorithm.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.algorithm.setStyleSheet(algorithm_style)
-
-        layout.addWidget(label_algorithm)
+        layout.addWidget(self._plain("Política:"))
+        self.algorithm = self._value("--", "#00d4ff", width=210)
         layout.addWidget(self.algorithm)
+
+    def _plain(self, text: str) -> QLabel:
+        label = QLabel(text)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setStyleSheet("color: #8b949e; font-size: 10px;")
+        return label
+
+    def _value(self, text: str, color: str, width: int | None = None) -> QLabel:
+        label = QLabel(text)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setStyleSheet(f"color: {color}; font-size: 10px; font-weight: bold;")
+        if width:
+            label.setFixedWidth(width)
+        return label
+
+    def _sep(self) -> QLabel:
+        label = QLabel("|")
+        label.setStyleSheet("color: #21262d;")
+        return label

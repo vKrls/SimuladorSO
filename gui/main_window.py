@@ -1,120 +1,125 @@
-from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QPushButton, QVBoxLayout, QFrame, QLabel
-from PySide6.QtCore import Qt
+from __future__ import annotations
 
-from core.simulator import Simulator
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QMainWindow, QPushButton, QVBoxLayout, QWidget
+
 from gui.fcfs_window import FCFS_Window
-from gui.sjfa_window import SJFa_Window
-from gui.sjfn_window import SJFn_Window
-from gui.rr_window import RR_Window
 from gui.pra_window import PRa_Window
 from gui.prn_window import PRn_Window
+from gui.rr_window import RR_Window
+from gui.sjfa_window import SJFa_Window
+from gui.sjfn_window import SJFn_Window
+from gui.simulation_client import SimulationClient
+
 
 class MainWindow(QMainWindow):
-    def __init__(self, simulator: Simulator):
+    def __init__(self, client: SimulationClient):
         super().__init__()
-        self.simulator = simulator
-
-        self.setWindowTitle("Hola")
-
+        self.client = client
+        self.setWindowTitle("Simulador de Planificación")
         self.show_main_menu()
 
+    def show_main_menu(self) -> None:
+        central = QWidget()
+        self.setCentralWidget(central)
 
-    def show_main_menu(self):
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
+        layout = QVBoxLayout(central)
+        layout.setContentsMargins(28, 24, 28, 24)
+        layout.setSpacing(18)
 
-        main_layout = QVBoxLayout()
-        central_widget.setLayout(main_layout)
-
-        title = QLabel("Procesitos")
+        header = QFrame()
+        header.setObjectName("panel")
+        header_layout = QVBoxLayout(header)
+        header_layout.setContentsMargins(18, 16, 18, 16)
+        title = QLabel("Simulador de Planificación de Procesos")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("color: #00d4ff; font-size: 28px; font-weight: bold;")
+        subtitle = QLabel("CPU, memoria, PCB, Gantt, estadísticas y registro de eventos")
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        subtitle.setStyleSheet("color: #8b949e; font-size: 11px;")
+        header_layout.addWidget(title)
+        header_layout.addWidget(subtitle)
+        layout.addWidget(header)
 
-        btn_panel  = QFrame()
-        btn_layout = QVBoxLayout()
-        btn_panel.setLayout(btn_layout)
+        grid = QGridLayout()
+        grid.setSpacing(14)
+        layout.addLayout(grid, 1)
 
-        btn_fcfs = QPushButton("FCFS")
-        btn_sjfa  = QPushButton("SJF Apropiativo")
-        btn_sjfn  = QPushButton("SJF No Apropiativo")
-        btn_rr = QPushButton("Round Robin")
-        btn_pra = QPushButton("Priority Apropiativo")
-        btn_prn = QPushButton("Priority No Apropiativo")
+        cards = [
+            ("FCFS", "First Come First Served", "No apropiativo", "Orden por llegada", self.fcfs_window),
+            ("SJF-A", "Shortest Job First", "Apropiativo", "Menor tiempo restante", self.sjfa_window),
+            ("SJF-N", "Shortest Job First", "No apropiativo", "Menor burst disponible", self.sjfn_window),
+            ("RR", "Round Robin", "Apropiativo", "Quantum configurable", self.rr_window),
+            ("PR-A", "Prioridades", "Apropiativo", "Mayor prioridad disponible", self.pra_window),
+            ("PR-N", "Prioridades", "No apropiativo", "Selección por prioridad", self.prn_window),
+        ]
+        for index, card in enumerate(cards):
+            grid.addWidget(self._algorithm_card(*card), index // 3, index % 3)
 
-        btn_layout.addWidget(btn_fcfs)
-        btn_layout.addWidget(btn_sjfa)
-        btn_layout.addWidget(btn_sjfn)
-        btn_layout.addWidget(btn_rr)
-        btn_layout.addWidget(btn_pra)
-        btn_layout.addWidget(btn_prn)
-
-        btn_fcfs.clicked.connect(self.fcfs_window)
-        btn_sjfa.clicked.connect(self.sjfa_window)
-        btn_sjfn.clicked.connect(self.sjfn_window)
-        btn_rr.clicked.connect(self.rr_window)
-        btn_pra.clicked.connect(self.pra_window)
-        btn_prn.clicked.connect(self.prn_window)
-
-        main_layout.addWidget(title, 1)
-        main_layout.addWidget(btn_panel, 4)
-
-        self.setMinimumSize(400, 400)
-        self.resize(400, 400)
+        self.setMinimumSize(900, 560)
+        self.resize(1040, 660)
         self.center_window()
 
+    def _algorithm_card(self, name: str, desc: str, mode: str, detail: str, callback) -> QFrame:
+        card = QFrame()
+        card.setObjectName("panel")
+        card.setStyleSheet("""
+            QFrame#panel { background: #161b22; border: 1px solid #30363d; border-radius: 6px; }
+            QFrame#panel:hover { border-color: #00d4ff; }
+        """)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(8)
 
-    def fcfs_window(self):
-        fcfs_window = FCFS_Window(self, self.simulator)
+        top = QHBoxLayout()
+        title = QLabel(name)
+        title.setStyleSheet("color: #ffffff; font-size: 20px; font-weight: bold;")
+        top.addWidget(title)
+        top.addStretch()
+        mode_label = QLabel(mode)
+        mode_label.setStyleSheet("color: #00d4ff; font-size: 9px;")
+        top.addWidget(mode_label)
+        layout.addLayout(top)
 
-        self.setCentralWidget(fcfs_window)
+        description = QLabel(desc)
+        description.setStyleSheet("color: #8b949e; font-size: 11px;")
+        layout.addWidget(description)
+        detail_label = QLabel(detail)
+        detail_label.setStyleSheet("color: #484f58; font-size: 10px;")
+        layout.addWidget(detail_label)
+        layout.addStretch()
+
+        button = QPushButton("Abrir")
+        button.setObjectName("primaryButton")
+        button.clicked.connect(callback)
+        layout.addWidget(button)
+        return card
+
+    def fcfs_window(self) -> None:
+        self._open_algorithm(FCFS_Window)
+
+    def sjfa_window(self) -> None:
+        self._open_algorithm(SJFa_Window)
+
+    def sjfn_window(self) -> None:
+        self._open_algorithm(SJFn_Window)
+
+    def rr_window(self) -> None:
+        self._open_algorithm(RR_Window)
+
+    def pra_window(self) -> None:
+        self._open_algorithm(PRa_Window)
+
+    def prn_window(self) -> None:
+        self._open_algorithm(PRn_Window)
+
+    def _open_algorithm(self, window_cls) -> None:
+        self.setCentralWidget(window_cls(self, self.client))
         self.resize(1380, 860)
         self.center_window()
 
-
-    def sjfa_window(self):
-        sjfa_window = SJFa_Window(self, self.simulator)
-
-        self.setCentralWidget(sjfa_window)
-        self.resize(1380, 860)
-        self.center_window()
-    
-    
-    def sjfn_window(self):
-        sjfn_window = SJFn_Window(self, self.simulator)
-
-        self.setCentralWidget(sjfn_window)
-        self.resize(1380, 860)
-        self.center_window()
-
-
-    def rr_window(self):
-        rr_window = RR_Window(self, self.simulator)
-
-        self.setCentralWidget(rr_window)
-        self.resize(1380, 860)
-        self.center_window()
-
-    
-    def pra_window(self):
-        pra_window = PRa_Window(self, self.simulator)
-
-        self.setCentralWidget(pra_window)
-        self.resize(1380, 860)
-        self.center_window()
-    
-    
-    def prn_window(self):
-        prn_window = PRn_Window(self, self.simulator)
-
-        self.setCentralWidget(prn_window)
-        self.resize(1380, 860)
-        self.center_window()
-
-
-    def center_window(self):
+    def center_window(self) -> None:
         screen = QApplication.primaryScreen().availableGeometry()
         window = self.geometry()
-
-        center = screen.center()
-        window.moveCenter(center)
-
+        window.moveCenter(screen.center())
         self.move(window.topLeft())

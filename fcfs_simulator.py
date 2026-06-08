@@ -27,7 +27,7 @@ from PySide6.QtGui import (
     QDoubleValidator
 )
 
-# resize
+
 # ─────────────────────────────────────────────
 #  DATOS / MODELOS
 # ─────────────────────────────────────────────
@@ -1332,7 +1332,7 @@ class FCFSWindow(QMainWindow):
         if not finished:
             return
 
-        # Calcular métricas resize
+        # Calcular métricas
         total_wt = sum(p.waiting_time for p in finished)
         total_tat = sum(p.turnaround_time for p in finished)
         total_resp = sum(p.response_time for p in finished if p.response_time >= 0)

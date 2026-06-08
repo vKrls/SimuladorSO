@@ -1,182 +1,172 @@
-from PySide6.QtWidgets import QProgressBar, QHBoxLayout, QScrollArea, QVBoxLayout, QWidget, QFrame, QLabel
+from __future__ import annotations
 
-from models.pcb import Pcb
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QFrame, QGroupBox, QHBoxLayout, QLabel, QProgressBar, QScrollArea, QVBoxLayout, QWidget
 
-label_style = """
-    font-size: 10px;
-    color: gray;
-"""
+from gui.components.visual_widgets import StateChip
+from gui.simulation_client import UiProcess
 
-frame_style = """
-QFrame#infoFrame {
-    background-color: rgba(33, 150, 243, 0.13);
-    border: 1px solid rgba(33, 150, 243, 0.35);
-    border-radius: 4px;
-}
 
-QFrame#infoFrame QLabel {
-    color: #BBDEFB;
-    font-size: 12px;
-    border: none;
-    background: transparent;
-    padding: 0px;
-    margin: 0px;
-}
-"""
-
-class Process_Queue(QFrame):
+class Process_Queue(QGroupBox):
     def __init__(self, alg: str = ""):
-        super().__init__()
+        super().__init__("COLA DE PROCESOS")
         self.alg = alg
 
-        layout = QVBoxLayout()
-        self.setLayout(layout)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 10, 8, 8)
+        layout.setSpacing(6)
 
-        layout.setSpacing(2)
+        hint = QLabel(self._hint_text())
+        hint.setStyleSheet("color: #484f58; font-size: 9px;")
+        layout.addWidget(hint)
+        layout.addWidget(self._process_queue(), 1)
+        self.footer = QLabel("0 proceso(s) en cola")
+        self.footer.setStyleSheet("color: #484f58; font-size: 9px;")
+        layout.addWidget(self.footer)
 
-        layout.addWidget(self._header())
-        layout.addWidget(self._process_queue())
-        layout.addWidget(self._footer())
-    
-
-    def _header(self) -> QLabel:
-        header = QLabel("Orden de ejecución: ")
-        header.setStyleSheet(label_style)
-        return header
-    
+    def _hint_text(self) -> str:
+        if self.alg == "rr":
+            return "Orden circular por quantum."
+        if self.alg == "pr":
+            return "Menor valor indica mayor prioridad."
+        if self.alg == "sjf":
+            return "Se prioriza el burst más corto disponible."
+        return "Ordenado por llegada."
 
     def _process_queue(self) -> QScrollArea:
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         container = QWidget()
-        self.layout_process_queue = QVBoxLayout()
-        container.setLayout(self.layout_process_queue)
+        self.layout_process_queue = QVBoxLayout(container)
+        self.layout_process_queue.setContentsMargins(0, 0, 0, 0)
+        self.layout_process_queue.setSpacing(5)
         self.layout_process_queue.addStretch()
-
         scroll.setWidget(container)
-
         return scroll
-    
 
-    def _process_card(self, pcb: Pcb) -> QFrame:
+    def _process_card(self, process: UiProcess) -> QFrame:
         widget = QFrame()
-        layout = QVBoxLayout()
-        widget.setLayout(layout)
-        widget.setFixedHeight(120)
-
-        layout.setSpacing(0)
-        layout.setContentsMargins(16, 0, 16, 0)
-        
-        layout.addWidget(self._top_card(pcb))
-        layout.addWidget(self._mid_card(pcb))
-        layout.addWidget(self._bar_card(pcb))
-        layout.addWidget(self._btm_card(pcb))
-
+        widget.setFixedHeight(128)
+        widget.setStyleSheet(f"""
+            QFrame {{
+                background: #0d1117;
+                border: 1px solid {process.color}55;
+                border-left: 3px solid {process.color};
+                border-radius: 6px;
+            }}
+        """)
+        layout = QVBoxLayout(widget)
+        layout.setSpacing(4)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.addWidget(self._top_card(process))
+        layout.addWidget(self._mid_card(process))
+        layout.addWidget(self._bar_card(process))
+        layout.addWidget(self._bottom_card(process))
         return widget
-    
 
-    def _top_card(self, pcb: Pcb) -> QWidget:
+    def _top_card(self, process: UiProcess) -> QWidget:
         widget = QWidget()
-        layout = QHBoxLayout()
-        widget.setLayout(layout)
-
-        pid_frame = self._to_frame(f"[PID {pcb.pid}] {pcb.name}")
-        layout.addWidget(pid_frame)
-
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        title = QLabel(f"[PID {process.pid}] {process.name}")
+        title.setStyleSheet(f"color: {process.color}; font-weight: bold; font-size: 11px;")
+        layout.addWidget(title)
         layout.addStretch()
-
-        state_frame = self._to_frame(f"{pcb.state}")
-        layout.addWidget(state_frame)
-
-        return widget
-    
-
-    def _mid_card(self, pcb: Pcb) -> QWidget:
-        widget = QWidget()
-        layout = QHBoxLayout()
-        widget.setLayout(layout)
-        
-        sched = pcb.info_scheduler
-
-        burst_frame = self._to_frame(f"Burst: {sched.burst_time}")
-        layout.addWidget(burst_frame)
-
-        memory_frame = self._to_frame(f"Mem: {pcb.info_memory.required_memory}")
-        layout.addWidget(memory_frame)
-        
-        remaining_frame = self._to_frame(f"Rest: {sched.remaining_time}")
-        layout.addWidget(remaining_frame)
-
-        pc_frame = self._to_frame(f"PC: 0x{pcb.cpu_context.program_counter}")
-        layout.addWidget(pc_frame)
-
-        layout.addStretch()
-
+        layout.addWidget(StateChip(process.state))
         return widget
 
+    def _mid_card(self, process: UiProcess) -> QWidget:
+        fields = [
+            f"Burst: {self._fmt(process.burst_time)}",
+            f"Mem: {process.memory} KB",
+            f"Rest: {self._fmt(process.remaining_time or 0)}",
+            f"PC: 0x{process.program_counter:X}",
+        ]
+        return self._field_row(fields)
 
-    def _bar_card(self, pcb: Pcb) -> QProgressBar:
+    def _bar_card(self, process: UiProcess) -> QProgressBar:
         progress_bar = QProgressBar()
-
-        progress_bar.setMinimum(0)
-        progress_bar.setMaximum(100)
-        progress_bar.setValue(0)
-        progress_bar.setFormat("%p%")
-        progress_bar.setFixedHeight(5)
-
+        progress_bar.setRange(0, 100)
+        progress_bar.setValue(int(max(0, min(100, process.progress))))
+        progress_bar.setTextVisible(False)
+        progress_bar.setFixedHeight(7)
+        progress_bar.setStyleSheet(f"""
+            QProgressBar {{ background: #161b22; border: none; border-radius: 3px; }}
+            QProgressBar::chunk {{ background: {process.color}; border-radius: 3px; }}
+        """)
         return progress_bar
 
-
-    def _btm_card(self, pcb: Pcb) -> QWidget:
-        widget = QWidget()
-        layout = QHBoxLayout()
-        widget.setLayout(layout)
-
-        sched = pcb.info_scheduler
-
-        arrival_frame = self._to_frame(f"Lleg: {sched.arrival_time}")
-        layout.addWidget(arrival_frame)
-        
-        turnaround_frame = self._to_frame(f"TAT: {sched.turnaround_time}")
-        layout.addWidget(turnaround_frame)
-
-        response_frame = self._to_frame(f"Resp: {sched.response_time}")
-        layout.addWidget(response_frame)
-
+    def _bottom_card(self, process: UiProcess) -> QWidget:
+        fields = [
+            f"Lleg: {self._fmt(process.arrival_time)}",
+            f"Inicio: {self._dash(process.start_time)}",
+            f"TAT: {self._fmt(process.turnaround_time)}",
+            f"Waste: {process.waste_kb}",
+        ]
         if self.alg == "pr":
-            priority_frame = self._to_frame(f"Pr: {sched.priority}")
-            layout.addWidget(priority_frame)
+            fields.append(f"Pr: {process.priority}")
+        if self.alg == "rr":
+            fields.append(f"Q: {self._fmt(process.quantum)}")
+        return self._field_row(fields)
 
+    def _field_row(self, fields: list[str]) -> QWidget:
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        for field in fields:
+            layout.addWidget(self._field_chip(field))
         layout.addStretch()
-
         return widget
 
-
-    def _to_frame(self, text: str) -> QFrame:
+    def _field_chip(self, text: str) -> QFrame:
         frame = QFrame()
-        frame.setObjectName("infoFrame")
-        frame.setStyleSheet(frame_style)
-
+        frame.setStyleSheet("""
+            QFrame {
+                background: rgba(33, 150, 243, 0.12);
+                border: 1px solid rgba(33, 150, 243, 0.30);
+                border-radius: 4px;
+            }
+            QLabel {
+                color: #8b949e;
+                font-size: 9px;
+            }
+        """)
         layout = QHBoxLayout(frame)
-        layout.setContentsMargins(8, 2, 8, 2)
-
-        label = QLabel(text)
-        layout.addWidget(label)
-
+        layout.setContentsMargins(6, 2, 6, 2)
+        layout.addWidget(QLabel(text))
         return frame
 
+    def add_process_card(self, process: UiProcess) -> None:
+        self.layout_process_queue.insertWidget(self.layout_process_queue.count() - 1, self._process_card(process))
+        self._update_footer()
 
-    def add_process_card(self, pcb: Pcb):
-        card = self._process_card(pcb)
+    def set_processes(self, processes: list[UiProcess]) -> None:
+        self.clear()
+        for process in processes:
+            self.add_process_card(process)
 
-        self.layout_process_queue.insertWidget(
-            self.layout_process_queue.count() - 1,
-            card
-        )
+    def clear(self) -> None:
+        while self.layout_process_queue.count() > 1:
+            item = self.layout_process_queue.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self._update_footer()
 
+    def _update_footer(self) -> None:
+        count = max(0, self.layout_process_queue.count() - 1)
+        self.footer.setText(f"{count} proceso(s) en cola")
 
-    def _footer(self) -> QLabel:
-        footer = QLabel("0 proceso(s) en cola.")
-        footer.setStyleSheet(label_style)
-        return footer
+    def _fmt(self, value: float | int | None) -> str:
+        if value is None:
+            return "--"
+        return f"{float(value):.1f}"
+
+    def _dash(self, value: float | int | None) -> str:
+        if value is None:
+            return "--"
+        return self._fmt(value)

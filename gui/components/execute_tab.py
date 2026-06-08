@@ -1,11 +1,448 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout
+from __future__ import annotations
 
-# from gui.components.gantt_diagram import Gantt_Diagram
+from html import escape
 
-class Execute_Tab(QWidget):
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import (
+    QFrame,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QProgressBar,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QTabWidget,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+
+from gui.components.visual_widgets import GanttWidget, GlowLabel, MemoryMapWidget, STATE_COLORS, STATE_LABELS
+from gui.simulation_client import SimulationResult, UiProcess
+from gui.simulation_clock import TICK, TICK_MS
+
+
+class Execute_Tab(QTabWidget):
     def __init__(self):
         super().__init__()
+        self.metrics: dict[str, QLabel] = {}
+        self.counters: dict[str, QLabel] = {}
 
-        layout = QVBoxLayout()
-        self.setLayout(layout)
+        self.addTab(self._build_execution_tab(), "Ejecución")
+        self.addTab(self._build_stats_tab(), "Estadísticas")
+        self.addTab(self._build_pcb_tab(), "PCB")
+        self.addTab(self._build_log_tab(), "Log")
 
+    def _build_execution_tab(self) -> QWidget:
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(10)
+
+        cpu_frame = QFrame()
+        cpu_frame.setObjectName("panel")
+        cpu_layout = QHBoxLayout(cpu_frame)
+        cpu_layout.setContentsMargins(12, 8, 12, 8)
+        cpu_layout.setSpacing(10)
+
+        cpu_layout.addWidget(GlowLabel("CPU", "#00d4ff", 10))
+        sep = QLabel("|")
+        sep.setStyleSheet("color: #21262d;")
+        cpu_layout.addWidget(sep)
+
+        self.cpu_process = QLabel("-- INACTIVO --")
+        self.cpu_process.setStyleSheet("color: #484f58; font-size: 11px;")
+        cpu_layout.addWidget(self.cpu_process, 1)
+
+        self.status = QLabel("Listo")
+        self.status.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.status.setStyleSheet("color: #8b949e; font-size: 10px;")
+        cpu_layout.addWidget(self.status)
+
+        self.cpu_progress = QProgressBar()
+        self.cpu_progress.setRange(0, 100)
+        self.cpu_progress.setValue(0)
+        self.cpu_progress.setFixedWidth(190)
+        self.cpu_progress.setFixedHeight(9)
+        self.cpu_progress.setTextVisible(False)
+        self.cpu_progress.setStyleSheet("""
+            QProgressBar { background: #0d1117; border: none; border-radius: 4px; }
+            QProgressBar::chunk { background: #00d4ff; border-radius: 4px; }
+        """)
+        cpu_layout.addWidget(self.cpu_progress)
+        layout.addWidget(cpu_frame)
+
+        gantt_group = QGroupBox("DIAGRAMA DE GANTT")
+        gantt_layout = QVBoxLayout(gantt_group)
+        gantt_layout.setContentsMargins(6, 10, 6, 6)
+        self.gantt = GanttWidget()
+        gantt_layout.addWidget(self.gantt)
+        layout.addWidget(gantt_group)
+
+        memory_group = QGroupBox("MAPA DE MEMORIA")
+        memory_layout = QVBoxLayout(memory_group)
+        memory_layout.setContentsMargins(6, 10, 6, 6)
+        self.memory_map = MemoryMapWidget()
+        memory_layout.addWidget(self.memory_map)
+        layout.addWidget(memory_group)
+
+        queue_group = QGroupBox("ESTADO DE COLAS")
+        queue_layout = QGridLayout(queue_group)
+        queue_layout.setSpacing(6)
+        labels = [
+            ("TOTAL", "#8b949e"),
+            ("NUEVOS", "#546e7a"),
+            ("LISTOS", "#1565c0"),
+            ("EJECUTANDO", "#2e7d32"),
+            ("BLOQUEADOS", "#e65100"),
+            ("TERMINADOS", "#7bc67e"),
+        ]
+        for index, (label, color) in enumerate(labels):
+            queue_layout.addWidget(self._counter_box(label, color), 0, index)
+        layout.addWidget(queue_group)
+        layout.addStretch()
+        return widget
+
+    def _counter_box(self, label: str, color: str) -> QFrame:
+        frame = QFrame()
+        frame.setStyleSheet(f"background: {color}16; border: 1px solid {color}44; border-radius: 4px;")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(8, 4, 8, 4)
+        value = QLabel("0")
+        value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        value.setStyleSheet(f"color: {color}; font-size: 18px; font-weight: bold;")
+        name = QLabel(label)
+        name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        name.setStyleSheet("color: #484f58; font-size: 8px;")
+        layout.addWidget(value)
+        layout.addWidget(name)
+        self.counters[label] = value
+        return frame
+
+    def _build_stats_tab(self) -> QWidget:
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(10)
+
+        metrics_group = QGroupBox("MÉTRICAS GLOBALES")
+        metrics_layout = QGridLayout(metrics_group)
+        metrics_layout.setSpacing(8)
+        metrics = [
+            ("avg_waiting", "Espera Promedio", "#f7c59f"),
+            ("avg_turnaround", "TAT Promedio", "#7bc67e"),
+            ("avg_response", "Respuesta Promedio", "#c77dff"),
+            ("throughput", "Throughput", "#00d4ff"),
+            ("cpu_util", "Utilización CPU", "#ff6b35"),
+            ("total_time", "Tiempo Total", "#48cae4"),
+        ]
+        for index, (key, label, color) in enumerate(metrics):
+            metrics_layout.addWidget(self._metric_box(key, label, color), index // 3, index % 3)
+        layout.addWidget(metrics_group)
+
+        table_group = QGroupBox("TABLA DE RESULTADOS POR PROCESO")
+        table_layout = QVBoxLayout(table_group)
+        self.stats_table = QTableWidget()
+        headers = ["PID", "Nombre", "Llegada", "Burst", "Inicio", "Fin", "Espera", "TAT", "Resp.", "Memoria"]
+        self._configure_table(self.stats_table, headers, stretch=True)
+        table_layout.addWidget(self.stats_table)
+        layout.addWidget(table_group, 1)
+        return widget
+
+    def _metric_box(self, key: str, label: str, color: str) -> QFrame:
+        frame = QFrame()
+        frame.setStyleSheet(f"background: {color}11; border: 1px solid {color}33; border-radius: 4px;")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(10, 6, 10, 6)
+        value = QLabel("--")
+        value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        value.setStyleSheet(f"color: {color}; font-size: 20px; font-weight: bold;")
+        text = QLabel(label)
+        text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        text.setStyleSheet("color: #484f58; font-size: 8px;")
+        layout.addWidget(value)
+        layout.addWidget(text)
+        self.metrics[key] = value
+        return frame
+
+    def _build_pcb_tab(self) -> QWidget:
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+
+        label = QLabel("Process Control Block")
+        label.setStyleSheet("color: #8b949e; font-size: 10px;")
+        layout.addWidget(label)
+
+        self.pcb_table = QTableWidget()
+        headers = [
+            "PID", "Nombre", "Estado", "PC", "Base", "Límite", "Burst", "Restante",
+            "Llegada", "Inicio", "Fin", "Espera", "TAT", "Resp.", "Interrup.", "Prioridad",
+        ]
+        self._configure_table(self.pcb_table, headers, stretch=False)
+        layout.addWidget(self.pcb_table, 1)
+        return widget
+
+    def _build_log_tab(self) -> QWidget:
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
+
+        header = QHBoxLayout()
+        label = QLabel("REGISTRO DE EVENTOS")
+        label.setStyleSheet("color: #8b949e; font-size: 10px;")
+        header.addWidget(label)
+        header.addStretch()
+        button = QPushButton("Limpiar")
+        button.setFixedWidth(80)
+        button.clicked.connect(lambda: self.log_view.clear())
+        header.addWidget(button)
+        layout.addLayout(header)
+
+        self.log_view = QTextEdit()
+        self.log_view.setReadOnly(True)
+        layout.addWidget(self.log_view)
+        return widget
+
+    def _configure_table(self, table: QTableWidget, headers: list[str], *, stretch: bool) -> None:
+        table.setColumnCount(len(headers))
+        table.setHorizontalHeaderLabels(headers)
+        mode = QHeaderView.ResizeMode.Stretch if stretch else QHeaderView.ResizeMode.ResizeToContents
+        table.horizontalHeader().setSectionResizeMode(mode)
+        table.verticalHeader().setVisible(False)
+        table.setAlternatingRowColors(True)
+        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+
+    def set_status(self, text: str) -> None:
+        self.status.setText(text)
+
+    def set_processes(self, processes: list[UiProcess]) -> None:
+        self._fill_stats_table(processes)
+        self._fill_pcb_table(processes)
+        self._update_counters(processes)
+        self._update_cpu_panel(processes, [], None)
+
+    def clear(self) -> None:
+        self.gantt.clear()
+        self.memory_map.clear()
+        self.stats_table.setRowCount(0)
+        self.pcb_table.setRowCount(0)
+        self.cpu_process.setText("-- INACTIVO --")
+        self.cpu_process.setStyleSheet("color: #484f58; font-size: 11px;")
+        self.cpu_progress.setValue(0)
+        for value in self.metrics.values():
+            value.setText("--")
+        for value in self.counters.values():
+            value.setText("0")
+        self.log_view.clear()
+        self.status.setText("Listo")
+
+    def prepare_simulation(self, result: SimulationResult, processes: list[UiProcess], total_time: float) -> None:
+        self.clear()
+        self.status.setText(f"T: 0.0 u.t.  |  tick={TICK:.1f} u.t. / {TICK_MS} ms")
+        self.gantt.set_segments([], total_time)
+        memory = self._last_event(result.events, "memory_map")
+        if memory:
+            self.memory_map.set_blocks(memory.get("blocks", []), memory.get("total_kb"))
+        self._fill_stats_table(processes)
+        self._fill_pcb_table(processes)
+        self._update_counters(processes)
+        for event in result.events:
+            if event.get("type") == "log" and event.get("level") == "INFO":
+                self._append_log(str(event.get("message", "")), "INFO")
+
+    def update_time_view(
+        self,
+        current_time: float,
+        processes: list[UiProcess],
+        visible_segments: list[dict],
+        running_process: UiProcess | None,
+        total_time: float,
+    ) -> None:
+        self.status.setText(f"T: {current_time:.1f} u.t.  |  tick={TICK:.1f} u.t. / {TICK_MS} ms")
+        self.gantt.set_segments(visible_segments, total_time)
+        self._fill_stats_table(processes)
+        self._fill_pcb_table(processes)
+        self._update_counters(processes)
+        self._update_cpu_panel(processes, visible_segments, running_process)
+
+    def set_exchange(self, result: SimulationResult, processes: list[UiProcess] | None = None) -> None:
+        self.log_view.clear()
+        self.status.setText("Simulación completada" if result.ok else "Simulación detenida")
+
+        gantt = self._last_event(result.events, "gantt")
+        segments = gantt.get("segments", []) if gantt else []
+        self.gantt.set_segments(segments)
+
+        memory = self._last_event(result.events, "memory_map")
+        if memory:
+            self.memory_map.set_blocks(memory.get("blocks", []), memory.get("total_kb"))
+
+        stats = self._last_event(result.events, "stats")
+        if stats:
+            self._fill_metrics(stats.get("summary", {}))
+
+        if processes is not None:
+            self._fill_stats_table(processes)
+            self._fill_pcb_table(processes)
+            self._update_counters(processes)
+            self._update_cpu_panel(processes, segments, None)
+
+        log_events = [event for event in result.events if event.get("type") == "log"]
+        if log_events:
+            for event in log_events:
+                self._append_log(str(event.get("message", "")), str(event.get("level", "INFO")))
+        elif result.error:
+            self._append_log(result.error, "WARN")
+        else:
+            self._append_log("Simulación lista.", "INFO")
+
+    def append_log(self, message: str, level: str = "INFO") -> None:
+        self._append_log(message, level)
+
+    def _fill_metrics(self, summary: dict) -> None:
+        for key, label in self.metrics.items():
+            value = float(summary.get(key, 0.0))
+            if key == "cpu_util":
+                label.setText(f"{value:.1f}%")
+            elif key == "throughput":
+                label.setText(f"{value:.3f}")
+            else:
+                label.setText(f"{value:.2f}")
+
+    def _fill_stats_table(self, processes: list[UiProcess]) -> None:
+        self.stats_table.setRowCount(len(processes))
+        for row, process in enumerate(processes):
+            values = [
+                process.pid,
+                process.name,
+                self._fmt(process.arrival_time),
+                self._fmt(process.burst_time),
+                self._dash(process.start_time),
+                self._dash(process.finish_time),
+                self._fmt(process.waiting_time),
+                self._fmt(process.turnaround_time),
+                self._dash(process.response_time),
+                f"{process.memory} KB",
+            ]
+            self._set_row(self.stats_table, row, values, process)
+
+    def _fill_pcb_table(self, processes: list[UiProcess]) -> None:
+        self.pcb_table.setRowCount(len(processes))
+        for row, process in enumerate(processes):
+            values = [
+                process.pid,
+                process.name,
+                STATE_LABELS.get(process.state, process.state),
+                f"0x{process.program_counter:X}",
+                f"{process.memory_base} KB",
+                f"{process.memory_limit} KB",
+                self._fmt(process.burst_time),
+                self._fmt(process.remaining_time or 0),
+                self._fmt(process.arrival_time),
+                self._dash(process.start_time),
+                self._dash(process.finish_time),
+                self._fmt(process.waiting_time),
+                self._fmt(process.turnaround_time),
+                self._dash(process.response_time),
+                process.interrupts,
+                process.priority,
+            ]
+            self._set_row(self.pcb_table, row, values, process)
+
+    def _set_row(self, table: QTableWidget, row: int, values: list, process: UiProcess) -> None:
+        for column, value in enumerate(values):
+            item = QTableWidgetItem(str(value))
+            if column == 1:
+                item.setForeground(QColor(process.color))
+            if column == 2:
+                item.setForeground(QColor(STATE_COLORS.get(process.state, "#c9d1d9")))
+            table.setItem(row, column, item)
+
+    def _update_counters(self, processes: list[UiProcess]) -> None:
+        counts = {key: 0 for key in self.counters}
+        counts["TOTAL"] = len(processes)
+        for process in processes:
+            if process.state == "NEW":
+                counts["NUEVOS"] += 1
+            elif process.state == "READY":
+                counts["LISTOS"] += 1
+            elif process.state == "RUNNING":
+                counts["EJECUTANDO"] += 1
+            elif process.state == "BLOCKED":
+                counts["BLOQUEADOS"] += 1
+            elif process.state == "TERMINATED":
+                counts["TERMINADOS"] += 1
+        for key, value in counts.items():
+            self.counters[key].setText(str(value))
+
+    def _update_cpu_panel(
+        self,
+        processes: list[UiProcess],
+        segments: list[dict],
+        running_process: UiProcess | None,
+    ) -> None:
+        if running_process is not None:
+            self.cpu_process.setText(
+                f"{running_process.name} [PID {running_process.pid}]  "
+                f"Rest: {self._fmt(running_process.remaining_time)} u.t."
+            )
+            self.cpu_process.setStyleSheet("color: #7bc67e; font-size: 11px;")
+            self.cpu_progress.setValue(int(max(0, min(100, running_process.progress))))
+            return
+
+        if not processes:
+            self.cpu_process.setText("-- INACTIVO --")
+            self.cpu_process.setStyleSheet("color: #484f58; font-size: 11px;")
+            self.cpu_progress.setValue(0)
+            return
+
+        if segments:
+            last = segments[-1]
+            self.cpu_process.setText(
+                f"Último: {last.get('name', '--')} [PID {last.get('pid', '-')}]  "
+                f"t={float(last.get('start', 0)):.1f}"
+            )
+            self.cpu_process.setStyleSheet("color: #8b949e; font-size: 11px;")
+            self.cpu_progress.setValue(0)
+            return
+
+        self.cpu_process.setText(f"{len(processes)} proceso(s) en cola")
+        self.cpu_process.setStyleSheet("color: #8b949e; font-size: 11px;")
+        self.cpu_progress.setValue(0)
+
+    def _append_log(self, message: str, level: str = "INFO") -> None:
+        colors = {
+            "INFO": "#8b949e",
+            "RUN": "#7bc67e",
+            "DONE": "#00d4ff",
+            "WARN": "#f7c59f",
+            "ERR": "#ff4d6d",
+        }
+        color = colors.get(level, "#8b949e")
+        self.log_view.append(
+            f'<span style="color:{color}; font-family: Courier New; font-size:10px;">{escape(message)}</span>'
+        )
+
+    def _last_event(self, events: list[dict], event_type: str) -> dict | None:
+        for event in reversed(events):
+            if event.get("type") == event_type:
+                return event
+        return None
+
+    def _fmt(self, value: float | int | None) -> str:
+        if value is None:
+            return "--"
+        return f"{float(value):.1f}"
+
+    def _dash(self, value: float | int | None) -> str:
+        if value is None:
+            return "--"
+        return self._fmt(value)
