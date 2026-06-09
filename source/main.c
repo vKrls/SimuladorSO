@@ -6,7 +6,7 @@
 #include <time.h>
 
 #define TICK		0.1	/* Cuanto avanza (u.t.) en cada iteracion */
-#define TICK_MS		50000	/* MS = MICROSEGUNDOS, 1000 MS = 1 Milisegundo */
+#define TICK_MS		7500	/* MS = MICROSEGUNDOS, 1000 MS = 1 Milisegundo */
 
 #define TOTAL_BLOCKS	1024
 #define BLOCK_SIZE      4    	/* Tamaño de cada bloque      */
@@ -168,6 +168,10 @@ struct ContextList {
 };
 
 struct Simulator {
+	bool run;
+
+	struct Queue created_processes;
+	
 	/* Scheduler largo plazo */
 	struct Queue process_q;
 	struct Queue ready_q;
@@ -770,6 +774,10 @@ void scheduler(struct Simulator *s)
 struct Simulator simulator_init(void)
 {
 	struct Simulator s;
+
+	s.run = false;
+
+	s.created_processes = init_queue();
 	
 	s.process_q	= init_queue();
 	s.ready_q	= init_queue();
@@ -888,6 +896,9 @@ int main(void)
 	while (true) {
 		usleep(TICK_MS);
 		s->current_time += TICK;
+
+		if (!s->run)
+			continue;
 		
 		/* Si terminaron todos los procesos */
 		if (s->process_q.cont == 0 && s->ready_q.cont == 0 && s->running == NULL) {
