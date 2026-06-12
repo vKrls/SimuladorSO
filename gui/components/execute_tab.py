@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
 
 from gui.components.visual_widgets import GanttWidget, GlowLabel, MemoryMapWidget, STATE_COLORS, STATE_LABELS
 from gui.simulation_client import SimulationResult, UiProcess
-from gui.simulation_clock import TICK, TICK_MS
 
 
 class Execute_Tab(QTabWidget):
@@ -244,34 +243,24 @@ class Execute_Tab(QTabWidget):
         self.log_view.clear()
         self.status.setText("Listo")
 
-    def prepare_simulation(self, result: SimulationResult, processes: list[UiProcess], total_time: float) -> None:
-        self.clear()
-        self.status.setText(f"T: 0.0 u.t.  |  tick={TICK:.1f} u.t. / {TICK_MS} ms")
-        self.gantt.set_segments([], total_time)
-        memory = self._last_event(result.events, "memory_map")
-        if memory:
-            self.memory_map.set_blocks(memory.get("blocks", []), memory.get("total_kb"))
-        self._fill_stats_table(processes)
-        self._fill_pcb_table(processes)
-        self._update_counters(processes)
-        for event in result.events:
-            if event.get("type") == "log" and event.get("level") == "INFO":
-                self._append_log(str(event.get("message", "")), "INFO")
+    def set_bridge_result(self, result: SimulationResult, processes: list[UiProcess] | None = None) -> None:
+        self.status.setText("Comandos enviados a C" if result.ok else "No se pudo comunicar con C")
+        if processes is not None:
+            self._fill_stats_table(processes)
+            self._fill_pcb_table(processes)
+            self._update_counters(processes)
+            self._update_cpu_panel(processes, [], None)
 
-    def update_time_view(
-        self,
-        current_time: float,
-        processes: list[UiProcess],
-        visible_segments: list[dict],
-        running_process: UiProcess | None,
-        total_time: float,
-    ) -> None:
-        self.status.setText(f"T: {current_time:.1f} u.t.  |  tick={TICK:.1f} u.t. / {TICK_MS} ms")
-        self.gantt.set_segments(visible_segments, total_time)
-        self._fill_stats_table(processes)
-        self._fill_pcb_table(processes)
-        self._update_counters(processes)
-        self._update_cpu_panel(processes, visible_segments, running_process)
+        if result.command_lines:
+            self._append_log("Comandos enviados:", "INFO")
+            for line in result.command_lines:
+                self._append_log(f"> {line}", "RUN")
+        if result.stdout_lines:
+            self._append_log("Salida:", "INFO")
+            for line in result.stdout_lines:
+                self._append_log(line, "INFO")
+        if result.error:
+            self._append_log(result.error, "ERR")
 
     def set_exchange(self, result: SimulationResult, processes: list[UiProcess] | None = None) -> None:
         self.log_view.clear()

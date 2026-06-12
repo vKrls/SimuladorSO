@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
+import queue
+import subprocess
+import threading
 from typing import Any
 
 from gui.components.visual_widgets import PROCESS_COLORS
-from gui.simulation_engine import LocalSimulationEngine
 
 
 @dataclass
@@ -46,6 +49,12 @@ class UiProcess:
         if self.remaining_time is None:
             self.remaining_time = self.burst_time
 
+    def to_c_command(self) -> str:
+        return (
+            f"ADD {self.name} {self.memory} {self.burst_time:.3f} "
+            f"{self.arrival_time:.3f} {self.priority}"
+        )
+
     def to_payload(self) -> dict[str, Any]:
         return {
             "pid": self.pid,
@@ -62,21 +71,26 @@ class UiProcess:
 @dataclass
 class SimulationResult:
     payload: dict[str, Any]
-    stdout: str = ""
+    command_lines: list[str] = field(default_factory=list)
+    stdout_lines: list[str] = field(default_factory=list)
     returncode: int | None = None
     events: list[dict[str, Any]] = field(default_factory=list)
     error: str | None = None
 
     @property
     def ok(self) -> bool:
-        return self.error is None and self.returncode == 0
+        return self.error is None
 
 
 class SimulationClient:
-    def __init__(self, engine: LocalSimulationEngine | None = None):
-        self.engine = engine or LocalSimulationEngine()
+    def __init__(self, c_executable: Path | None = None):
+        project_root = Path(__file__).resolve().parents[1]
+        self.c_executable = c_executable or project_root / "build" / "main"
         self._next_pid = 1
         self._processes_by_algorithm: dict[str, list[UiProcess]] = {}
+        self._process: subprocess.Popen[str] | None = None
+        self._stdout_queue: queue.Queue[str] = queue.Queue()
+        self._stderr_queue: queue.Queue[str] = queue.Queue()
 
     def processes_for(self, algorithm: str) -> list[UiProcess]:
         return list(self._processes_by_algorithm.get(algorithm, []))
@@ -86,7 +100,7 @@ class SimulationClient:
         self._next_pid += 1
         process = UiProcess(
             pid=pid,
-            name=process_data.name.strip() or f"P{pid}",
+            name=self._sanitize_name(process_data.name.strip() or f"P{pid}"),
             burst_time=process_data.cpu_burst,
             memory=process_data.memory,
             arrival_time=process_data.arrival_time,
@@ -106,57 +120,130 @@ class SimulationClient:
             "processes": [process.to_payload() for process in self.processes_for(algorithm)],
         }
 
+    def build_c_commands(self, algorithm: str) -> list[str]:
+        processes = self.processes_for(algorithm)
+        return [
+            self.build_config_command(algorithm, processes),
+            *[process.to_c_command() for process in processes],
+        ]
+
+    def build_config_command(self, algorithm: str, processes: list[UiProcess]) -> str:
+        sched_alg = {
+            "fcfs": 0,
+            "sjf_nonpreemptive": 1,
+            "sjf_preemptive": 2,
+            "round_robin": 3,
+            "priority_nonpreemptive": 4,
+            "priority_preemptive": 5,
+        }.get(algorithm, 0)
+        memory_alg = 0
+        quantum = 0.0
+        if algorithm == "round_robin":
+            quantum = next((process.quantum for process in processes if process.quantum > 0), 1.0)
+        return f"CONFIG {sched_alg}, {memory_alg}, {quantum:.3f}"
+
     def run(self, algorithm: str, *, apply_events: bool = True) -> SimulationResult:
         payload = self.build_payload(algorithm)
-        result = SimulationResult(payload=payload)
-        result.stdout, result.events = self.engine.simulate(payload)
-        result.returncode = 0
-        if apply_events:
-            self._apply_events(algorithm, result.events)
+        command_lines = self.build_c_commands(algorithm)
+        result = SimulationResult(payload=payload, command_lines=command_lines)
+
+        if not self.c_executable.exists():
+            result.error = f"No existe el ejecutable: {self.c_executable}"
+            return result
+
+        try:
+            self._ensure_process()
+            for line in command_lines:
+                self.send_command(line)
+        except OSError as exc:
+            result.error = str(exc)
+
         return result
 
-    def apply_result(self, algorithm: str, result: SimulationResult) -> None:
-        self._apply_events(algorithm, result.events)
+    def send_pause(self) -> SimulationResult:
+        return self._send_control("PAUSE")
+
+    def send_run(self) -> SimulationResult:
+        return self._send_control("RUN")
 
     def stop(self) -> SimulationResult:
-        return SimulationResult(payload={}, error="Simulación detenida.")
+        result = self._send_control("STOP")
+        self.close_process()
+        return result
 
-    def _apply_events(self, algorithm: str, events: list[dict[str, Any]]) -> None:
-        processes = {process.pid: process for process in self._processes_by_algorithm.get(algorithm, [])}
-        for event in events:
-            if event.get("type") != "process_update":
-                continue
-            process = processes.get(event.get("pid"))
-            if process is None:
-                continue
-            if "state" in event:
-                process.state = str(event["state"])
-            if "remaining_time" in event:
-                process.remaining_time = float(event["remaining_time"])
-            if "assigned_blocks" in event:
-                process.assigned_blocks = int(event["assigned_blocks"])
-            if "waste_kb" in event:
-                process.waste_kb = int(event["waste_kb"])
-            if "program_counter" in event:
-                process.program_counter = int(event["program_counter"])
-            if "memory_base" in event:
-                process.memory_base = int(event["memory_base"])
-            if "memory_limit" in event:
-                process.memory_limit = int(event["memory_limit"])
-            if "progress" in event:
-                process.progress = float(event["progress"])
-            if "start_time" in event:
-                process.start_time = float(event["start_time"])
-            if "finish_time" in event:
-                process.finish_time = float(event["finish_time"])
-            if "waiting_time" in event:
-                process.waiting_time = float(event["waiting_time"])
-            if "turnaround_time" in event:
-                process.turnaround_time = float(event["turnaround_time"])
-            if "response_time" in event:
-                process.response_time = float(event["response_time"])
-            if "interrupts" in event:
-                process.interrupts = int(event["interrupts"])
+    def read_stdout_lines(self) -> list[str]:
+        return self._drain(self._stdout_queue)
+
+    def read_stderr_lines(self) -> list[str]:
+        return self._drain(self._stderr_queue)
+
+    def is_process_running(self) -> bool:
+        return self._process is not None and self._process.poll() is None
+
+    def close_process(self) -> None:
+        if self._process is None:
+            return
+        if self._process.poll() is None:
+            try:
+                self._process.terminate()
+                self._process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                self._process.kill()
+                self._process.wait(timeout=1)
+        self._process = None
+
+    def _ensure_process(self) -> None:
+        if self.is_process_running():
+            return
+
+        self._stdout_queue = queue.Queue()
+        self._stderr_queue = queue.Queue()
+        self._process = subprocess.Popen(
+            [str(self.c_executable)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+        self._start_reader(self._process.stdout, self._stdout_queue)
+        self._start_reader(self._process.stderr, self._stderr_queue)
+
+    def _start_reader(self, stream, output_queue: queue.Queue[str]) -> None:
+        def read_loop() -> None:
+            if stream is None:
+                return
+            for line in stream:
+                output_queue.put(line.rstrip("\n"))
+
+        thread = threading.Thread(target=read_loop, daemon=True)
+        thread.start()
+
+    def send_command(self, line: str) -> None:
+        if not self.is_process_running() or self._process is None or self._process.stdin is None:
+            raise OSError("El proceso C no está ejecutándose.")
+        self._process.stdin.write(line + "\n")
+        self._process.stdin.flush()
+
+    def _send_control(self, command: str) -> SimulationResult:
+        result = SimulationResult(payload={}, command_lines=[command])
+        try:
+            self.send_command(command)
+        except OSError as exc:
+            result.error = str(exc)
+        return result
+
+    def _drain(self, output_queue: queue.Queue[str]) -> list[str]:
+        lines: list[str] = []
+        while True:
+            try:
+                lines.append(output_queue.get_nowait())
+            except queue.Empty:
+                return lines
+
+    def _sanitize_name(self, name: str) -> str:
+        cleaned = "".join(ch for ch in name if not ch.isspace())
+        return (cleaned or "P")[:15]
 
     def _color_for(self, pid: int) -> str:
         return PROCESS_COLORS[(pid - 1) % len(PROCESS_COLORS)]
