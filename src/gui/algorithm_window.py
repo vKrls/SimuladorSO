@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import random
-
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
@@ -91,14 +89,18 @@ class AlgorithmWindow(QWidget):
     def add_random_processes(self) -> None:
         if self.client.is_process_running():
             return
-        for _ in range(5):
-            self.client.add_process(self.algorithm, self._random_process_data())
-        self._refresh_process_views("Procesos aleatorios agregados.")
+
+        quantum = 0.0
+        if self.input_mode == "rr":
+            quantum = self.center.process_input.input_quantum.value()
+
+        self.client.request_random_processes(self.algorithm, quantum)
+        self._refresh_process_views("RANDOM pendiente: C generará 5 procesos.")
         self.header.set_state("LISTO", "#00d4ff")
 
     def start_simulation(self) -> None:
         processes = self.client.processes_for(self.algorithm)
-        if not processes:
+        if not self.client.has_processes_for(self.algorithm):
             self.center.execute_tab.set_status("Agrega al menos un proceso.")
             self.header.set_state("SIN PROCESOS", "#f7c59f")
             return
@@ -181,7 +183,7 @@ class AlgorithmWindow(QWidget):
         self._sync_summary(processes)
 
     def _sync_summary(self, processes: list[UiProcess]) -> None:
-        total = len(processes)
+        total = len(processes) + self.client.random_process_count_for(self.algorithm)
         finished = sum(1 for process in processes if process.state == "TERMINATED")
         used_memory = sum(process.memory for process in processes)
         free_memory = max(0, 4096 - used_memory)
@@ -200,16 +202,3 @@ class AlgorithmWindow(QWidget):
         process_input.btn_clean.setEnabled(not running)
         process_input.btn_stop.setEnabled(running)
         process_input.btn_kill.setEnabled(running)
-
-    def _random_process_data(self) -> ProcessData:
-        process_data = ProcessData(
-            name="",
-            cpu_burst=float(random.randint(1, 18)),
-            memory=random.randint(1, 16) * 64,
-            arrival_time=float(random.randint(0, 12)),
-        )
-        if self.input_mode == "rr":
-            process_data.quantum = self.center.process_input.input_quantum.value()
-        if self.input_mode == "pr":
-            process_data.priority = random.randint(0, 9)
-        return process_data

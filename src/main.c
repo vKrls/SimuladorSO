@@ -9,13 +9,13 @@
 #define TICK		0.1	/* Cuanto avanza (u.t.) en cada iteracion */
 #define TICK_US		50000	/* US = MICROSEGUNDOS, 1000 us = 1 ms */
 
-#define TOTAL_BLOCKS	1024
-#define BLOCK_SIZE      4    	/* Tamaño de cada bloque      */
+#define TOTAL_BLOCKS	1024	/* bloquecitos de memoria */
+#define BLOCK_SIZE      4    	/* Tamaño de cada bloque */
 
-#define ERR_CODE_MAX    16   	/* Máximo tamaño de codigo de error      */
+#define ERR_CODE_MAX    16   	/* Máximo tamaño de codigo de error */
 #define ERR_DESC_MAX    32   	/* Máximo tamaño de descripción de error */
 
-#define PCB_CANT	10
+#define RANDOM_PROCESS_COUNT 5
 
 enum SimulatorState {
 	SIM_RUN 	= 0,
@@ -48,6 +48,7 @@ enum ProcessState {
 };
 
 enum IoDevice {
+	IO_NONE     = -1,
 	IO_KEYBOARD = 0,
 	IO_DISK     = 1,
 	IO_PRINTER  = 2
@@ -198,6 +199,9 @@ struct Simulator {
 	struct Queue ready_q;
 	struct Queue io_q;
 	struct Queue finished_q;
+
+	/* Cosas de interrupciones, i/o, etc (zzz) */
+	enum IntType interrupt_q;
 	
 	/* Memoria */
 	struct MemoryBlockList memory_list;
@@ -217,22 +221,31 @@ struct Simulator {
 	/* Datos de simulación */
 	double current_time;
 
-	float quantum;	
+	double quantum;
 	
 	int next_pid;
 };
 
 /* Log */
 void log_config(struct Simulator *);
-void log_run();
+void log_run(void);
 void log_add(struct Pcb *);
-void log_pause();
-void log_stop();
+void log_pause(void);
+void log_stop(void);
 /* Imprimir */
 void print_pcb(struct Pcb *);
 void print_queue(struct Queue *);
 void print_memory(struct MemoryBlockList *);
 void print_main_loop(struct Simulator *);
+/* Enviar datos a Python */
+const char *process_state_name(enum ProcessState);
+const char *io_device_name(enum IoDevice);
+void send_json_string(const char *);
+void send_pcb_data(struct Pcb *);
+void send_queue_data(const char *, struct Queue *);
+void send_memory_data(struct MemoryBlockList *);
+void send_running_data(struct Pcb *);
+void send_data(struct Simulator *);
 /* Iniciar */
 struct Queue init_queue(void);
 struct MemoryBlockList mem_init(void);
@@ -262,24 +275,30 @@ void job_scheduler(struct Simulator *);
 /* Short-Term Scheduler */
 void scheduler(struct Simulator *);
 struct Pcb *alg_fcfs(struct Simulator *);
-struct Pcb *alg_np_sjf(struct Simulator *);
-struct Pcb *alg_p_sjf(struct Simulator *);
+struct Pcb *alg_sjf(struct Simulator *);
+struct Pcb *alg_priority(struct Simulator *);
 /* Gestion de PCB */
-struct Pcb create_pcb(struct Simulator *, char *, int, float, float, int);
+struct Pcb create_pcb(struct Simulator *, char *, int, double, double, int);
+void create_random_processes(struct Simulator *);
 /* Diagrama de Gantt */
 
+/* Maquina de estados */
+void set_process_state(struct Simulator *, struct Pcb *, enum ProcessState);
 /* Main loop */
-void main_loop(struct Simulator *);
 bool stdin_has_data(void);
 void process_stdin(struct Simulator *, char *);
+bool should_preempt(struct Simulator *);
+void tick_running_process(struct Simulator *);
+void main_loop(struct Simulator *);
 
 /* Log */
 void log_config(struct Simulator *s)
 {
-	printf("Configuración aplicada.");
+	printf("Configuración aplicada: planificador=%d, memoria=%d, quantum=%.3f.\n",
+		s->alg_sched, s->alg_memory, s->quantum);
 }
 
-void log_run() 
+void log_run(void)
 {
 	printf("Simulación iniciada.\n");
 }
@@ -289,12 +308,12 @@ void log_add(struct Pcb *p)
 	printf("Proceso %s(%d) agregado.\n", p->name, p->pid);
 }
 
-void log_pause()
+void log_pause(void)
 {
 	printf("Simulación pausada.\n");
 }
 
-void log_stop()
+void log_stop(void)
 {
 	printf("Simulación terminada.\n");
 }
@@ -367,6 +386,153 @@ void print_main_loop(struct Simulator *s)
 	fflush(stdout);
 }
 
+const char *process_state_name(enum ProcessState state)
+{
+	switch (state) {
+		case NEW:         return "NEW";
+		case READY:       return "READY";
+		case RUNNING:     return "RUNNING";
+		case BLOCKED:     return "BLOCKED";
+		case TERMINATED:  return "TERMINATED";
+		case ERROR_STATE: return "ERROR";
+		default:          return "UNKNOWN";
+	}
+}
+
+const char *io_device_name(enum IoDevice device)
+{
+	switch (device) {
+		case IO_NONE:     return "NONE";
+		case IO_KEYBOARD: return "KEYBOARD";
+		case IO_DISK:     return "DISK";
+		case IO_PRINTER:  return "PRINTER";
+		default:          return "NONE";
+	}
+}
+
+void send_json_string(const char *text)
+{
+	const unsigned char *c = (const unsigned char *)text;
+
+	putchar('"');
+	while (*c != '\0') {
+		switch (*c) {
+			case '"':  fputs("\\\"", stdout); break;
+			case '\\': fputs("\\\\", stdout); break;
+			case '\n': fputs("\\n", stdout);  break;
+			case '\r': fputs("\\r", stdout);  break;
+			case '\t': fputs("\\t", stdout);  break;
+			default:
+				if (*c < 0x20)
+					printf("\\u%04x", *c);
+				else
+					putchar(*c);
+		}
+		c++;
+	}
+	putchar('"');
+}
+
+void send_pcb_data(struct Pcb *p)
+{
+	printf("{\"pid\":%d,\"name\":", p->pid);
+	send_json_string(p->name);
+	printf(",\"state\":");
+	send_json_string(process_state_name(p->state));
+	printf(",\"cpu\":{\"program_counter\":%d,\"stack_pointer\":%d}",
+		p->cpu_ctx.program_counter, p->cpu_ctx.stack_pointer);
+	printf(",\"scheduler\":{\"arrival_time\":%.3f,\"burst_time\":%.3f,"
+		"\"remaining_time\":%.3f,\"start_time\":%.3f,\"finish_time\":%.3f,"
+		"\"waiting_time\":%.3f,\"turnaround_time\":%.3f,\"response_time\":%.3f,"
+		"\"priority\":%d,\"remaining_quantum\":%.3f}",
+		p->sched.arrival_time, p->sched.burst_time, p->sched.remaining_time,
+		p->sched.start_time, p->sched.finish_time, p->sched.waiting_time,
+		p->sched.turnaround_time, p->sched.response_time, p->sched.priority,
+		p->sched.remaining_quantum);
+	printf(",\"memory\":{\"required_kb\":%d,\"assigned_blocks\":%d,"
+		"\"waste_kb\":%d,\"start_block\":%d,\"limit_block\":%d}",
+		p->mem.required_kb, p->mem.assigned_blocks, p->mem.waste_kb,
+		p->mem.start, p->mem.limit);
+	printf(",\"io\":{\"has_io\":%s,\"start_time\":%.3f,\"duration\":%.3f,"
+		"\"device\":", p->io.has_io ? "true" : "false",
+		p->io.start_time, p->io.duration);
+	send_json_string(io_device_name(p->io.device));
+	printf("},\"interrupts\":{\"total\":%d,\"completed\":%d,\"next_time\":%.3f}",
+		p->interrupt.int_count, p->interrupt.int_done, p->interrupt.next_int);
+	printf(",\"error\":{\"has_error\":%s,\"code\":",
+		p->err.has_error ? "true" : "false");
+	send_json_string(p->err.error_code);
+	printf(",\"description\":");
+	send_json_string(p->err.error_desc);
+	putchar('}');
+	putchar('}');
+}
+
+void send_queue_data(const char *name, struct Queue *q)
+{
+	struct Node *node = q->head;
+	bool first = true;
+
+	printf("SIM_DATA {\"type\":\"queue\",\"name\":");
+	send_json_string(name);
+	printf(",\"count\":%d,\"processes\":[", q->cont);
+	while (node != NULL) {
+		if (!first)
+			putchar(',');
+		send_pcb_data(node->pcb);
+		first = false;
+		node = node->next;
+	}
+	printf("]}\n");
+}
+
+void send_memory_data(struct MemoryBlockList *memory)
+{
+	struct MemoryBlock *block = memory->head;
+	bool first = true;
+
+	printf("SIM_DATA {\"type\":\"memory\",\"total_blocks\":%d,"
+		"\"block_size_kb\":%d,\"free_blocks\":%d,\"blocks\":[",
+		TOTAL_BLOCKS, BLOCK_SIZE, memory->free);
+	while (block != NULL) {
+		if (!first)
+			putchar(',');
+		printf("{\"start_block\":%d,\"limit_block\":%d,\"length_blocks\":%d,"
+			"\"owner_pid\":%d}", block->start, block->limit,
+			block->length, block->owner);
+		first = false;
+		block = block->next;
+	}
+	printf("]}\n");
+}
+
+void send_running_data(struct Pcb *running)
+{
+	printf("SIM_DATA {\"type\":\"running\",\"process\":");
+	if (running == NULL)
+		printf("null");
+	else
+		send_pcb_data(running);
+	printf("}\n");
+}
+
+void send_data(struct Simulator *s)
+{
+	printf("SIM_DATA {\"type\":\"snapshot\",\"current_time\":%.3f,"
+		"\"simulator_state\":%d,\"scheduler_algorithm\":%d,"
+		"\"memory_algorithm\":%d,\"cpu_busy\":%s,\"quantum\":%.3f}\n",
+		s->current_time, s->state, s->alg_sched, s->alg_memory,
+		s->cpu_busy ? "true" : "false", s->quantum);
+	send_queue_data("created_processes", &s->created_processes);
+	send_queue_data("job_q", &s->job_q);
+	send_queue_data("ready_q", &s->ready_q);
+	send_queue_data("io_q", &s->io_q);
+	send_queue_data("finished_q", &s->finished_q);
+	send_running_data(s->running);
+	send_memory_data(&s->memory_list);
+	fflush(stdout);
+}
+
 /* Iniciar */
 struct Queue init_queue(void)
 {
@@ -426,9 +592,12 @@ struct GanttList gantt_init(void)
 
 struct Simulator simulator_init(void)
 {
-	struct Simulator s;
+	struct Simulator s = {0};
 
-	s.state = SIM_RUN;
+	s.state = SIM_PAUSE;
+	s.alg_sched = FCFS;
+	s.alg_memory = FIRST;
+	s.quantum = 1.0f;
 
 	s.created_processes = init_queue();
 	
@@ -444,6 +613,7 @@ struct Simulator simulator_init(void)
 	s.gantt 	= gantt_init();
 
 	s.running	= NULL;
+	s.next_pcb	= NULL;
 	s.cpu_busy	= false;
 	
 	s.current_time	= 0;
@@ -566,8 +736,8 @@ bool q_empty(struct Queue *q)
 void q_free(struct Queue *q)
 {
 	while(!q_empty(q)) {
-		free(q->head->pcb);
-		dequeue_head(q);
+		struct Pcb *p = dequeue_head(q);
+		free(p);
 	}
 }
 
@@ -633,12 +803,14 @@ bool kmalloc(struct Simulator *s, struct Pcb *p)
 	enum AlgorithmMem alg = s->alg_memory;
 	int blocks_needed = (p->mem.required_kb + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
-	if (blocks_needed > TOTAL_BLOCKS) {
-		fprintf(stderr, "OOM en kmalloc: Proceso demasiado grande.");
+	if (blocks_needed <= 0 || blocks_needed > TOTAL_BLOCKS)
 		return false;
-	}
 
-	if (blocks_needed > m->max->length)
+	/*
+	 * Cuando no queda ningún hueco libre, update_max_mem deja max en NULL.
+	 * No se puede desreferenciar hasta que otro proceso libere memoria.
+	 */
+	if (m->max == NULL || blocks_needed > m->max->length)
 		return false;
 
 	if (alg == FIRST) {
@@ -769,61 +941,44 @@ void dispatch(struct Simulator *s)
 		sc->start_time = s->current_time;
 		sc->response_time = sc->start_time - sc->arrival_time;
 	}
+
+	if (s->alg_sched == ROUND && sc->remaining_quantum <= 0)
+		sc->remaining_quantum = s->quantum;
 	
 	s->cpu_busy = true;
 }
 
-void dispatch_save_ctx(struct Simulator *s)	// Arreglar creo
+void dispatch_save_ctx(struct Simulator *s)
 {
 	struct Pcb *p = s->running;
 	struct ContextList *c = &s->context_list;
-	struct ContextNode *cn;
+	struct ContextNode *tmp;
 	
 	/* No hay contexto para guardar */
 	if (p == NULL)
 		return;
 
-	/* Crear nodo de contexto */
-	cn = malloc(sizeof(struct ContextNode));
-	
+	for (tmp = c->head; tmp != NULL; tmp = tmp->next) {
+		if (*tmp->pid == p->pid) {
+			tmp->ctx = p->cpu_ctx;
+			p->cpu_ctx.new = false;
+			return;
+		}
+	}
+
+	struct ContextNode *cn = malloc(sizeof(struct ContextNode));
+
 	if (!cn) {
 		fprintf(stderr, "OOM en save_ctx.\n");
 		exit(1);
 	}
-	
+
 	cn->ctx = p->cpu_ctx;
 	cn->pid = &p->pid;
-
-	/* Primer contexto guardado */
-	if (c->count == 0) {
-		c->head = cn;
-		c->count++;
-		return;
-	}
-
-	/* El contexto ya existe: se reemplaza */
-	if (!p->cpu_ctx.new) {
-		struct ContextNode *tmp = c->head;
-		struct ContextNode *tmp_back = NULL;
-		
-		while (cn->pid != tmp->pid) {
-			tmp_back = tmp;
-			tmp = tmp->next;
-		}
-
-		if (tmp_back != NULL)
-			tmp->next = cn;
-
-		cn->next = tmp->next;
-
-		free(tmp);
-
-		return;
-	}
-
-	/* Contexto nuevo */
 	cn->next = c->head;
 	c->head = cn;
+	c->count++;
+	p->cpu_ctx.new = false;
 }
 
 void terminate_running_process(struct Simulator *s)
@@ -881,6 +1036,18 @@ void job_scheduler(struct Simulator *s)		// Long-Term Scheduler / Largo plazo
 		
 		/* Para procesos nuevos (NEW) */
 		if (p->state == NEW && p->sched.arrival_time <= s->current_time) {
+			if (p->mem.required_kb <= 0 ||
+			    p->mem.required_kb > TOTAL_BLOCKS * BLOCK_SIZE) {
+				p->state = ERROR_STATE;
+				p->err.has_error = true;
+				snprintf(p->err.error_code, sizeof(p->err.error_code), "ERR_MEM");
+				snprintf(p->err.error_desc, sizeof(p->err.error_desc),
+					"Memoria invalida: %d KB", p->mem.required_kb);
+				enqueue(&s->finished_q, p);
+				dequeue_pcb(jq, p);
+				continue;
+			}
+
 			if (!kmalloc(s, p))
 				continue;
 
@@ -909,11 +1076,24 @@ void scheduler(struct Simulator *s)
 			break;
 
 		case NP_SJF:
-			p = alg_np_sjf(s);
+		case P_SJF:
+			p = alg_sjf(s);
+			s->next_pcb = p;
+			break;
+
+		case ROUND:
+			p = alg_fcfs(s);
+			s->next_pcb = p;
+			break;
+
+		case NP_PRIOR:
+		case P_PRIOR:
+			p = alg_priority(s);
 			s->next_pcb = p;
 			break;
 		
 		default:
+			s->next_pcb = NULL;
 			break;
 	}
 }
@@ -923,7 +1103,7 @@ struct Pcb *alg_fcfs(struct Simulator *s)
 	return dequeue_head(&(s->ready_q));
 }
 
-struct Pcb *alg_np_sjf(struct Simulator *s)	// Non-Preemptive Shortest Job First
+struct Pcb *alg_sjf(struct Simulator *s)	// Shortest Job First
 {
 	struct Queue *rq = &s->ready_q;
 	struct Node *tmp = rq->head;
@@ -931,8 +1111,8 @@ struct Pcb *alg_np_sjf(struct Simulator *s)	// Non-Preemptive Shortest Job First
 
 	tmp = tmp->next;
 	while (tmp != NULL) {
-		float tmp_time = tmp->pcb->sched.remaining_time;
-		float min_time = p->sched.remaining_time;
+		double tmp_time = tmp->pcb->sched.remaining_time;
+		double min_time = p->sched.remaining_time;
 
 		if (tmp_time < min_time)
 			p = tmp->pcb;
@@ -945,28 +1125,30 @@ struct Pcb *alg_np_sjf(struct Simulator *s)	// Non-Preemptive Shortest Job First
 	return p;
 }
 
-struct Pcb *alg_p_sjf(struct Simulator *s)	// Preemptive Shortest Job First
-{	
+struct Pcb *alg_priority(struct Simulator *s)
+{
 	struct Queue *rq = &s->ready_q;
 	struct Node *tmp = rq->head;
 	struct Pcb *p = tmp->pcb;
 
 	tmp = tmp->next;
-
 	while (tmp != NULL) {
-
+		if (tmp->pcb->sched.priority < p->sched.priority)
+			p = tmp->pcb;
+		tmp = tmp->next;
 	}
 
+	dequeue_pcb(rq, p);
 	return p;
 }
 
 /* Gestion de PCB*/
 struct Pcb create_pcb(struct Simulator *s, char *name, int mem_kb,
-		      float burst, float arrival, int priority)
+		      double burst, double arrival, int priority)
 {
 	struct Pcb p = {0};
 	
-	strcpy(p.name, name);
+	snprintf(p.name, sizeof(p.name), "%s", name);
 	
 	p.pid   = s->next_pid++;
 	p.state = NEW;
@@ -998,12 +1180,12 @@ struct Pcb create_pcb(struct Simulator *s, char *name, int mem_kb,
 
 	/* I/O aleatorio entre los dispositivos */
 	p.io.has_io = rand() % 2 == 0;  			/* la mitad de los procesos tienen I/O */
-	p.io.start_time = burst * (0.1 + (rand() % 80) / 100.0);/* io entre el 10-90% del burst	*/
-	p.io.duration	= -1;
-	p.io.device 	= -1;
+	p.io.start_time = (float)(burst * (0.1 + (double)(rand() % 80) / 100.0));/* io entre el 10-90% del burst */
+	p.io.duration	= -1.0f;
+	p.io.device 	= IO_NONE;
 	
 	if (p.io.has_io) {
-		p.io.duration = 1.0 + (rand() % 10);  		/* entre 1 y 10 u.t. */
+		p.io.duration = 1.0f + (float)(rand() % 10);  	/* entre 1 y 10 u.t. */
 		p.io.device = (enum IoDevice)(rand() % 3);
 	}
 	/* 0.5% de los procesos presentan error */
@@ -1027,41 +1209,33 @@ struct Pcb create_pcb(struct Simulator *s, char *name, int mem_kb,
 	return p;
 }
 
+void create_random_processes(struct Simulator *s)
+{
+	for (int i = 0; i < RANDOM_PROCESS_COUNT; i++) {
+		char name[16];
+		int memory = (1 + rand() % 16) * 64;
+		double burst = 1.0 + rand() % 18;
+		double arrival = rand() % 13;
+		int priority = rand() % 10;
+		struct Pcb *p = malloc(sizeof(struct Pcb));
+
+		if (!p) {
+			fprintf(stderr, "OOM al crear proceso aleatorio.\n");
+			return;
+		}
+
+		snprintf(name, sizeof(name), "P%d", s->next_pid);
+		*p = create_pcb(s, name, memory, burst, arrival, priority);
+		enqueue(&s->created_processes, p);
+		log_add(p);
+	}
+}
+
 /* Diagrama de Gantt */
 
 
 /* Main loop */
-void main_loop(struct Simulator *s)
-{
-	if (s->created_processes.cont > 0)			// Entran procesos a job_q
-		process_arrival(s);				// segun arrival_time
-	
-	if (s->job_q.cont > 0)					// Si existen procesos no listos
-		job_scheduler(s);				// se agregan a ready_q
-	
-	if (s->running == NULL && s->ready_q.cont > 0) {	// Cpu libre y procesos listos
-		scheduler(s);
-		dispatch(s);
-	}
-	
-	if (s->running != NULL) {
-		s->running->sched.remaining_time -= TICK;
-		
-		if (s->running->sched.remaining_time <= 0)	// Cpu ocupada y proceso terminado
-			terminate_running_process(s);
-	}
-	
-	if (s->created_processes.cont == 0 &&
-	    s->job_q.cont == 0		   &&
-	    s->ready_q.cont == 0	   &&
-	    s->running == NULL)					// Se terminan todos los procesos
-		s->state = SIM_STOP;				// y la CPU deja de trabajar
-
-	/* Imprimir */
-	print_main_loop(s);
-}
-
-bool stdin_has_data()
+bool stdin_has_data(void)
 {
 	struct pollfd fds;
 
@@ -1077,40 +1251,126 @@ void process_stdin(struct Simulator *s, char *line)
 {
 	if (strncmp(line, "CONFIG", 6) == 0) {
 		int alg_sched, alg_mem;
-		float quantum;
+		double quantum;
 
-		sscanf(line, "CONFIG %d %d %f", &alg_sched, &alg_mem, &quantum);
+		sscanf(line, "CONFIG %d %d %lf", &alg_sched, &alg_mem, &quantum);
 
-		s->alg_sched 	= alg_sched;
-		s->alg_memory 	= alg_mem;
+		s->alg_sched 	= (enum AlgorithmSched)alg_sched;
+		s->alg_memory 	= (enum AlgorithmMem)alg_mem;
 		s->quantum 	= quantum;
 
 		log_config(s);
 	} else if (strncmp(line, "ADD", 3) == 0) {
-		char name[32];
-		float burst, arrival;
+		char name[16];
+		double burst, arrival;
 		int mem_kb, priority;
 
-		sscanf(line, "ADD %31s %d %f %f %d",
+		sscanf(line, "ADD %15s %d %lf %lf %d",
 			name, &mem_kb, &burst, &arrival, &priority);
 
 		struct Pcb *p = malloc(sizeof(struct Pcb));
+
+		if (!p) {
+			fprintf(stderr, "OOM al crear proceso.\n");
+			return;
+		}
 
 		*p = create_pcb(s, name, mem_kb, burst, arrival, priority);
 
 		enqueue(&s->created_processes, p);
 
 		log_add(p);
-	} else if (strcmp(line, "RUN\n") == 0) {
+	} else if (strncmp(line, "RANDOM", 6) == 0) {
+		create_random_processes(s);
+	} else if (strncmp(line, "RUN", 3) == 0) {
 		s->state = SIM_RUN;
 		log_run();
-	} else if (strcmp(line, "PAUSE\n") == 0) {
+	} else if (strncmp(line, "PAUSE", 5) == 0) {
 		s->state = SIM_PAUSE;
 		log_pause();
-	} else if (strcmp(line, "STOP\n") == 0) {
+	} else if (strncmp(line, "STOP", 4) == 0) {
 		s->state = SIM_STOP;
 		log_stop();
 	}
+}
+
+bool should_preempt(struct Simulator *s)
+{
+	struct Node *tmp;
+
+	if (s->running == NULL || s->ready_q.head == NULL)
+		return false;
+
+	for (tmp = s->ready_q.head; tmp != NULL; tmp = tmp->next) {
+		if (s->alg_sched == P_SJF &&
+		    tmp->pcb->sched.remaining_time < s->running->sched.remaining_time)
+			return true;
+		if (s->alg_sched == P_PRIOR &&
+		    tmp->pcb->sched.priority < s->running->sched.priority)
+			return true;
+	}
+
+	return false;
+}
+
+void tick_running_process(struct Simulator *s)
+{
+	struct Pcb *p = s->running;
+
+	if (p == NULL)
+		return;
+
+	p->sched.remaining_time -= TICK;
+	p->cpu_ctx.program_counter++;
+
+	if (s->alg_sched == ROUND)
+		p->sched.remaining_quantum -= TICK;
+
+	if (p->sched.remaining_time <= 0) {
+		terminate_running_process(s);
+		return;
+	}
+
+	if (s->alg_sched == ROUND && p->sched.remaining_quantum <= 0) {
+		p->sched.remaining_quantum = s->quantum;
+		p->state = READY;
+		enqueue(&s->ready_q, p);
+		s->running = NULL;
+		s->cpu_busy = false;
+	}
+}
+
+void main_loop(struct Simulator *s)
+{
+	if (s->created_processes.cont > 0)			// Entran procesos a job_q
+		process_arrival(s);				// segun arrival_time
+
+	if (s->job_q.cont > 0)					// Si existen procesos no listos
+		job_scheduler(s);				// se agregan a ready_q
+
+	if (should_preempt(s)) {
+		s->running->state = READY;
+		enqueue(&s->ready_q, s->running);
+		scheduler(s);
+		dispatch(s);
+	}
+
+	if (s->running == NULL && s->ready_q.cont > 0) {	// Cpu libre y procesos listos
+		scheduler(s);
+		dispatch(s);
+	}
+
+	tick_running_process(s);
+
+	if (s->created_processes.cont == 0 &&
+	    s->job_q.cont == 0		   &&
+	    s->ready_q.cont == 0	   &&
+	    s->running == NULL)					// Se terminan todos los procesos
+		s->state = SIM_STOP;				// y la CPU deja de trabajar
+
+	/* Imprimir */
+	// print_main_loop(s);
+	send_data(s);
 }
 
 int main(void)
@@ -1119,45 +1379,32 @@ int main(void)
 	struct Simulator *s = &simulator;
 	char line[256];
 
-	srand(time(NULL));
+	srand((unsigned int)time(NULL));
 
-	for (int i = 0; i < PCB_CANT; i++) {
-		float burst_time	= 1 + rand() % 9;
-		float arrival_time	= 0;// + rand() % 9;
-		int memory		= 512 + rand() % 1023;
-		char name[3];
-		
-		snprintf(name, sizeof(name), "P%d", i);
+	setvbuf(stdin,  NULL, _IONBF, 0);	/* poll y fgets deben ver las mismas órdenes */
+	setvbuf(stdout, NULL, _IOLBF, 0);	/* stdout sale linea por linea (como un printf creo) */
 
-		struct Pcb *pcb = malloc(sizeof(struct Pcb));
-		*pcb = create_pcb(s, name, memory, burst_time, arrival_time, -1);
-		
-		enqueue(&s->created_processes, pcb);
-	}
-
-	setvbuf(stdout, NULL, _IOLBF, 0); /* stdout sale linea por linea (como un printf creo) */
-
-	s->alg_memory = FIRST;
-	s->alg_sched = FCFS;
-	s->state = SIM_RUN;
-
-	//printf("\033[?25l");
 	while (s->state != SIM_STOP) {
 		usleep(TICK_US);
-		s->current_time += TICK;
-		
+
 		if (stdin_has_data()) {
-			fgets(line, sizeof(line), stdin);
-			process_stdin(s, line);
+			if (fgets(line, sizeof(line), stdin) != NULL)
+				process_stdin(s, line);
 		}
-		
+
 		if (s->state == SIM_PAUSE)
 			continue;
 
+		s->current_time += TICK;
 		main_loop(s);
 	}
-	printf("\033[?25h");
 
+	if (s->running != NULL)
+		free(s->running);
+	q_free(&s->created_processes);
+	q_free(&s->job_q);
+	q_free(&s->ready_q);
+	q_free(&s->io_q);
 	q_free(&s->finished_q);
 
 	return 0;

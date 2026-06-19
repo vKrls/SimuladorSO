@@ -9,6 +9,8 @@ from typing import Any
 
 from gui.components.visual_widgets import PROCESS_COLORS
 
+RANDOM_PROCESS_COUNT = 5
+
 
 @dataclass
 class ProcessData:
@@ -84,10 +86,12 @@ class SimulationResult:
 
 class SimulationClient:
     def __init__(self, c_executable: Path | None = None):
-        project_root = Path(__file__).resolve().parents[1]
+        project_root = Path(__file__).resolve().parents[2]
         self.c_executable = c_executable or project_root / "build" / "main"
         self._next_pid = 1
         self._processes_by_algorithm: dict[str, list[UiProcess]] = {}
+        self._random_requests_by_algorithm: dict[str, int] = {}
+        self._random_quantum_by_algorithm: dict[str, float] = {}
         self._process: subprocess.Popen[str] | None = None
         self._stdout_queue: queue.Queue[str] = queue.Queue()
         self._stderr_queue: queue.Queue[str] = queue.Queue()
@@ -113,11 +117,28 @@ class SimulationClient:
 
     def clear_processes(self, algorithm: str) -> None:
         self._processes_by_algorithm[algorithm] = []
+        self._random_requests_by_algorithm[algorithm] = 0
+        self._random_quantum_by_algorithm.pop(algorithm, None)
+
+    def request_random_processes(self, algorithm: str, quantum: float = 0.0) -> None:
+        self._random_requests_by_algorithm[algorithm] = (
+            self._random_requests_by_algorithm.get(algorithm, 0) + 1
+        )
+        if quantum > 0:
+            self._random_quantum_by_algorithm[algorithm] = quantum
+
+    def random_process_count_for(self, algorithm: str) -> int:
+        requests = self._random_requests_by_algorithm.get(algorithm, 0)
+        return requests * RANDOM_PROCESS_COUNT
+
+    def has_processes_for(self, algorithm: str) -> bool:
+        return bool(self.processes_for(algorithm) or self.random_process_count_for(algorithm))
 
     def build_payload(self, algorithm: str) -> dict[str, Any]:
         return {
             "algorithm": algorithm,
             "processes": [process.to_payload() for process in self.processes_for(algorithm)],
+            "random_requests": self._random_requests_by_algorithm.get(algorithm, 0),
         }
 
     def build_c_commands(self, algorithm: str) -> list[str]:
@@ -125,6 +146,8 @@ class SimulationClient:
         return [
             self.build_config_command(algorithm, processes),
             *[process.to_c_command() for process in processes],
+            *["RANDOM"] * self._random_requests_by_algorithm.get(algorithm, 0),
+            "RUN",
         ]
 
     def build_config_command(self, algorithm: str, processes: list[UiProcess]) -> str:
@@ -139,8 +162,11 @@ class SimulationClient:
         memory_alg = 0
         quantum = 0.0
         if algorithm == "round_robin":
-            quantum = next((process.quantum for process in processes if process.quantum > 0), 1.0)
-        return f"CONFIG {sched_alg}, {memory_alg}, {quantum:.3f}"
+            quantum = next(
+                (process.quantum for process in processes if process.quantum > 0),
+                self._random_quantum_by_algorithm.get(algorithm, 1.0),
+            )
+        return f"CONFIG {sched_alg} {memory_alg} {quantum:.3f}"
 
     def run(self, algorithm: str, *, apply_events: bool = True) -> SimulationResult:
         payload = self.build_payload(algorithm)
