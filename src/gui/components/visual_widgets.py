@@ -17,6 +17,7 @@ STATE_COLORS = {
     "RUNNING": "#2e7d32",
     "BLOCKED": "#e65100",
     "TERMINATED": "#424242",
+    "ERROR": "#ff4d6d",
     "PLANNED": "#00d4ff",
 }
 
@@ -26,6 +27,7 @@ STATE_LABELS = {
     "RUNNING": "EJECUTANDO",
     "BLOCKED": "BLOQUEADO",
     "TERMINATED": "TERMINADO",
+    "ERROR": "ERROR",
     "PLANNED": "PLANIFICADO",
 }
 

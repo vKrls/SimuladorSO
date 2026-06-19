@@ -6,8 +6,9 @@
 #include <time.h>
 #include <poll.h>
 
-#define TICK		0.1	/* Cuanto avanza (u.t.) en cada iteracion */
-#define TICK_US		50000	/* US = MICROSEGUNDOS, 1000 us = 1 ms */
+#define TICK		0.001	/* Cuanto avanza (u.t.) en cada iteracion */
+#define TICK_US		250	/* US = MICROSEGUNDOS, 1000 us = 1 ms */
+#define TIME_EPSILON	1e-9
 
 #define TOTAL_BLOCKS	1024	/* bloquecitos de memoria */
 #define BLOCK_SIZE      4    	/* Tamaño de cada bloque */
@@ -68,7 +69,7 @@ enum IntType {
 };
 
 struct CpuContext {
-	bool new;
+	bool new;	/* Saber si crear o actualizar */
 
 	int program_counter;
 	int stack_pointer;
@@ -83,32 +84,32 @@ struct SchedulerData {
 	double waiting_time;
 	double turnaround_time;
 	double response_time;
-    
+
 	int    priority;
 	double remaining_quantum;
 };
 
 struct MemoryData {
-	int  required_kb;
-	int  assigned_blocks;
-	int  waste_kb;
+	int required_kb;
+	int assigned_blocks;
+	int waste_kb;
 
-	int  start;
-	int  limit;
+	int start;
+	int limit;
 };
 
 struct IoData{
 	bool	has_io;
-	
+
 	float	start_time;
 	float	duration;
-		
+
 	enum IoDevice device;
 };
 
 struct Interrupt {
-	int             int_count;
-	int             int_done;
+	int		int_count;
+	int		int_done;
 	double		next_int;
 };
 
@@ -133,7 +134,7 @@ struct Pcb {
 };
 
 struct Node {
-	struct Pcb  *pcb;
+	struct Pcb *pcb;
 	struct Node *next;
 };
 
@@ -163,17 +164,18 @@ struct MemoryBlockList {
 };
 
 struct GanttNode {
-	int start;
-	int limit;
+	double start;
+	double limit;
 	int owner;
-	
-	struct MemoryBlock *next;
+	char name[16];
+
+	struct GanttNode *next;
 };
 
 struct GanttList {
 	int cont;
 
-	struct MemoryBlock *head;
+	struct GanttNode *head;
 };
 
 struct ContextNode {
@@ -232,7 +234,7 @@ void log_run(void);
 void log_add(struct Pcb *);
 void log_pause(void);
 void log_stop(void);
-/* Imprimir */
+/* Imprimir - Deprecated */
 void print_pcb(struct Pcb *);
 void print_queue(struct Queue *);
 void print_memory(struct MemoryBlockList *);
@@ -245,6 +247,7 @@ void send_pcb_data(struct Pcb *);
 void send_queue_data(const char *, struct Queue *);
 void send_memory_data(struct MemoryBlockList *);
 void send_running_data(struct Pcb *);
+void send_gantt_data(struct Simulator *);
 void send_data(struct Simulator *);
 /* Iniciar */
 struct Queue init_queue(void);
@@ -359,32 +362,33 @@ void print_memory(struct MemoryBlockList *m) {
 	printf("%d\n", TOTAL_BLOCKS);
 }
 
-void print_main_loop(struct Simulator *s)
-{
-	printf("\033[H\033[J");
+/* Deprecated */
+// void print_main_loop(struct Simulator *s)
+// {
+// 	printf("\033[H\033[J");
 		
-	printf("\njob_q:\n");
-	printf("%-6s %-5s %-9s %-6s %-10s %-9s %-9s %-8s %-8s\n", "Name", "Pid", "Mem_req", "Burst", "Remaining", "Arrival", "B_needed", "Blocks", "Waste(kb)");
-	print_queue(&s->job_q);
+// 	printf("\njob_q:\n");
+// 	printf("%-6s %-5s %-9s %-6s %-10s %-9s %-9s %-8s %-8s\n", "Name", "Pid", "Mem_req", "Burst", "Remaining", "Arrival", "B_needed", "Blocks", "Waste(kb)");
+// 	print_queue(&s->job_q);
 	
-	printf("\nready_q:\n");
-	printf("%-6s %-5s %-9s %-6s %-10s %-9s %-9s %-8s %-8s\n", "Name", "Pid", "Mem_req", "Burst", "Remaining", "Arrival", "B_needed", "Blocks", "Waste(kb)");
-	print_queue(&s->ready_q);
+// 	printf("\nready_q:\n");
+// 	printf("%-6s %-5s %-9s %-6s %-10s %-9s %-9s %-8s %-8s\n", "Name", "Pid", "Mem_req", "Burst", "Remaining", "Arrival", "B_needed", "Blocks", "Waste(kb)");
+// 	print_queue(&s->ready_q);
 	
-	printf("\nfinished_q:\n");
-	printf("%-6s %-5s %-9s %-6s %-10s %-9s %-9s %-8s %-8s\n", "Name", "Pid", "Mem_req", "Burst", "Remaining", "Arrival", "B_needed", "Blocks", "Waste(kb)");
-	print_queue(&s->finished_q);
+// 	printf("\nfinished_q:\n");
+// 	printf("%-6s %-5s %-9s %-6s %-10s %-9s %-9s %-8s %-8s\n", "Name", "Pid", "Mem_req", "Burst", "Remaining", "Arrival", "B_needed", "Blocks", "Waste(kb)");
+// 	print_queue(&s->finished_q);
 	
-	printf("\nMemory list: (Free: %d)\n", s->memory_list.free);
-	print_memory(&s->memory_list);
+// 	printf("\nMemory list: (Free: %d)\n", s->memory_list.free);
+// 	print_memory(&s->memory_list);
 	
-	printf("\nRunning: %s\n", s->running == NULL ? "false" : "true");
-	printf("%-6s %-5s %-9s %-6s %-10s %-9s %-9s %-8s %-8s\n", "Name", "Pid", "Mem_req", "Burst", "Remaining", "Arrival", "B_needed", "Blocks", "Waste(kb)");
-	if (s->running != NULL)
-		print_pcb(s->running);
+// 	printf("\nRunning: %s\n", s->running == NULL ? "false" : "true");
+// 	printf("%-6s %-5s %-9s %-6s %-10s %-9s %-9s %-8s %-8s\n", "Name", "Pid", "Mem_req", "Burst", "Remaining", "Arrival", "B_needed", "Blocks", "Waste(kb)");
+// 	if (s->running != NULL)
+// 		print_pcb(s->running);
 	
-	fflush(stdout);
-}
+// 	fflush(stdout);
+// }
 
 const char *process_state_name(enum ProcessState state)
 {
@@ -433,7 +437,7 @@ void send_json_string(const char *text)
 	putchar('"');
 }
 
-void send_pcb_data(struct Pcb *p)
+void send_pcb_data(struct Pcb *p)	/* Locura locura */
 {
 	printf("{\"pid\":%d,\"name\":", p->pid);
 	send_json_string(p->name);
@@ -516,6 +520,34 @@ void send_running_data(struct Pcb *running)
 	printf("}\n");
 }
 
+void send_gantt_nodes(struct GanttNode *node, bool *first)
+{
+	if (node == NULL)
+		return;
+
+	/* La lista guarda el segmento más reciente en head. */
+	send_gantt_nodes(node->next, first);
+
+	if (!*first)
+		putchar(',');
+
+	printf("{\"pid\":%d,\"name\":", node->owner);
+	send_json_string(node->name);
+	printf(",\"start\":%.3f,\"limit\":%.3f,\"duration\":%.3f}",
+		node->start, node->limit, node->limit - node->start);
+	*first = false;
+}
+
+void send_gantt_data(struct Simulator *s)
+{
+	bool first = true;
+
+	printf("SIM_DATA {\"type\":\"gantt\",\"current_time\":%.3f,"
+		"\"count\":%d,\"segments\":[", s->current_time, s->gantt.cont);
+	send_gantt_nodes(s->gantt.head, &first);
+	printf("]}\n");
+}
+
 void send_data(struct Simulator *s)
 {
 	printf("SIM_DATA {\"type\":\"snapshot\",\"current_time\":%.3f,"
@@ -530,6 +562,7 @@ void send_data(struct Simulator *s)
 	send_queue_data("finished_q", &s->finished_q);
 	send_running_data(s->running);
 	send_memory_data(&s->memory_list);
+	send_gantt_data(s);
 	fflush(stdout);
 }
 
@@ -1232,19 +1265,68 @@ void create_random_processes(struct Simulator *s)
 }
 
 /* Diagrama de Gantt */
+void create_gantt_node(struct Simulator *s)
+{
+	struct Pcb *p = s->running;
+	struct GanttList *g = &s->gantt;
+	struct GanttNode *new = malloc(sizeof(struct GanttNode));
 
+	if (new == NULL) {
+		fprintf(stderr, "OOM en create_gantt_node.\n");
+		return;
+	}
+
+	new->start = s->current_time - TICK;
+	new->limit = s->current_time;
+	new->owner = p->pid;
+	snprintf(new->name, sizeof(new->name), "%s", p->name);
+	new->next = NULL;
+
+	g->cont++;
+
+	if (g->head == NULL) {
+		g->head = new;
+		return;
+	}
+
+	new->next = g->head;
+	g->head = new;
+}
+
+void update_gantt(struct Simulator *s)
+{
+	struct Pcb *p = s->running;
+	struct GanttNode *h = s->gantt.head;
+
+	/* CPU idle */
+	if (!s->cpu_busy)
+		return;
+
+	/* Primer proceso */
+	if (h == NULL) {
+		create_gantt_node(s);
+		return;
+	}
+
+	if (p->pid == h->owner)	/* Actualizar */
+		h->limit = s->current_time;
+	else				/* Nuevo */
+		create_gantt_node(s);
+}
 
 /* Main loop */
 bool stdin_has_data(void)
 {
+	/* Explicar poll (no entiendo)
+	 */
 	struct pollfd fds;
 
-	fds.fd = 0;		// stdin
-	fds.events = POLLIN;	// revisar si existe algo
+	fds.fd = 0;		/* stdin */
+	fds.events = POLLIN;	/* revisar si existe algo */
 
-	int ret = poll(&fds, 1, 0);	// retorno = poll(fds, cant, t_espera)
+	int ret = poll(&fds, 1, 0);	/* retorno = poll(fds, cant, t_espera) */
 	
-	return (ret > 0 && (fds.revents & POLLIN));	// Ocurrió un evento POLLIN
+	return (ret > 0 && (fds.revents & POLLIN));	/* Ocurrió un evento POLLIN (ni idea) */
 }
 
 void process_stdin(struct Simulator *s, char *line)
@@ -1280,8 +1362,10 @@ void process_stdin(struct Simulator *s, char *line)
 		enqueue(&s->created_processes, p);
 
 		log_add(p);
+		send_data(s);
 	} else if (strncmp(line, "RANDOM", 6) == 0) {
 		create_random_processes(s);
+		send_data(s);
 	} else if (strncmp(line, "RUN", 3) == 0) {
 		s->state = SIM_RUN;
 		log_run();
@@ -1317,16 +1401,16 @@ void tick_running_process(struct Simulator *s)
 {
 	struct Pcb *p = s->running;
 
-	if (p == NULL)
+	if (p == NULL)		/* wason */
 		return;
 
 	p->sched.remaining_time -= TICK;
-	p->cpu_ctx.program_counter++;
+	p->cpu_ctx.program_counter++;	/* al fin el program counter (mostrar en hexa) */
 
 	if (s->alg_sched == ROUND)
 		p->sched.remaining_quantum -= TICK;
 
-	if (p->sched.remaining_time <= 0) {
+	if (p->sched.remaining_time <= TIME_EPSILON) {
 		terminate_running_process(s);
 		return;
 	}
@@ -1342,11 +1426,11 @@ void tick_running_process(struct Simulator *s)
 
 void main_loop(struct Simulator *s)
 {
-	if (s->created_processes.cont > 0)			// Entran procesos a job_q
-		process_arrival(s);				// segun arrival_time
+	if (s->created_processes.cont > 0)			/* Entran procesos a job_q */
+		process_arrival(s);				/* segun arrival_time */
 
-	if (s->job_q.cont > 0)					// Si existen procesos no listos
-		job_scheduler(s);				// se agregan a ready_q
+	if (s->job_q.cont > 0)					/* Si existen procesos no listos */
+		job_scheduler(s);				/* se agregan a ready_q */
 
 	if (should_preempt(s)) {
 		s->running->state = READY;
@@ -1355,20 +1439,21 @@ void main_loop(struct Simulator *s)
 		dispatch(s);
 	}
 
-	if (s->running == NULL && s->ready_q.cont > 0) {	// Cpu libre y procesos listos
+	if (s->running == NULL && s->ready_q.cont > 0) {	/* Cpu libre y procesos listos */
 		scheduler(s);
 		dispatch(s);
 	}
 
+	update_gantt(s);
 	tick_running_process(s);
 
 	if (s->created_processes.cont == 0 &&
 	    s->job_q.cont == 0		   &&
 	    s->ready_q.cont == 0	   &&
-	    s->running == NULL)					// Se terminan todos los procesos
-		s->state = SIM_STOP;				// y la CPU deja de trabajar
+	    s->running == NULL)					/* Se terminan todos los procesos */
+		s->state = SIM_STOP;				/* y la CPU deja de trabajar */
 
-	/* Imprimir */
+	/* Imprimir - deprecated */
 	// print_main_loop(s);
 	send_data(s);
 }

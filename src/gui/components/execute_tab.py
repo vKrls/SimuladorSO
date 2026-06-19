@@ -296,6 +296,53 @@ class Execute_Tab(QTabWidget):
     def append_log(self, message: str, level: str = "INFO") -> None:
         self._append_log(message, level)
 
+    def set_gantt_event(self, event: dict) -> None:
+        self.gantt.set_segments(
+            event.get("segments", []),
+            event.get("current_time"),
+        )
+
+    def set_live_state(self, processes: list[UiProcess], state: dict) -> None:
+        snapshot = state.get("snapshot", {})
+        gantt = state.get("gantt", {})
+        memory = state.get("memory_map", {})
+        stats = state.get("stats", {})
+        running_data = state.get("running")
+        running_process = None
+
+        if running_data is not None:
+            running_pid = int(running_data.get("pid", -1))
+            running_process = next(
+                (process for process in processes if process.pid == running_pid),
+                None,
+            )
+
+        self.gantt.set_segments(
+            gantt.get("segments", []),
+            gantt.get("current_time"),
+        )
+        self.memory_map.set_blocks(
+            memory.get("blocks", []),
+            memory.get("total_kb"),
+        )
+        self._fill_metrics(stats)
+        self._fill_stats_table(processes)
+        self._fill_pcb_table(processes)
+        self._update_counters(processes)
+        self._update_cpu_panel(
+            processes,
+            gantt.get("segments", []),
+            running_process,
+        )
+
+        simulator_state = int(snapshot.get("simulator_state", 1))
+        if simulator_state == 0:
+            self.status.setText("Simulación en ejecución")
+        elif processes:
+            self.status.setText("Procesos cargados en C")
+        else:
+            self.status.setText("C esperando procesos")
+
     def _fill_metrics(self, summary: dict) -> None:
         for key, label in self.metrics.items():
             value = float(summary.get(key, 0.0))
@@ -367,7 +414,7 @@ class Execute_Tab(QTabWidget):
                 counts["EJECUTANDO"] += 1
             elif process.state == "BLOCKED":
                 counts["BLOQUEADOS"] += 1
-            elif process.state == "TERMINATED":
+            elif process.state in {"TERMINATED", "ERROR"}:
                 counts["TERMINADOS"] += 1
         for key, value in counts.items():
             self.counters[key].setText(str(value))
