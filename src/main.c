@@ -1,10 +1,11 @@
 #include <stdio.h>
 #include <stdbool.h>
-#include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
-#include <poll.h>
+
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 
 #define TICK		0.001	/* Cuanto avanza (u.t.) en cada iteracion */
 #define TICK_US		250	/* US = MICROSEGUNDOS, 1000 us = 1 ms */
@@ -217,14 +218,16 @@ struct Simulator {
 	struct ContextList context_list;
 	struct Pcb *next_pcb;
 	
+	double quantum;
+
 	/* Diagrama de Gantt */
 	struct GanttList gantt;
 	
 	/* Datos de simulación */
 	double current_time;
 
-	double quantum;
-	
+	int sim_speed;
+
 	int next_pid;
 };
 
@@ -288,6 +291,7 @@ void create_random_processes(struct Simulator *);
 /* Maquina de estados */
 void set_process_state(struct Simulator *, struct Pcb *, enum ProcessState);
 /* Main loop */
+void sleep_microseconds(unsigned int);
 bool stdin_has_data(void);
 void process_stdin(struct Simulator *, char *);
 bool should_preempt(struct Simulator *);
@@ -831,8 +835,8 @@ bool allocate_block(struct MemoryBlockList *m,
 bool kmalloc(struct Simulator *s, struct Pcb *p)
 {
 	struct MemoryBlockList *m = &s->memory_list;
-	struct MemoryBlock *tmp = m->head;		// Bloque libre donde se guarda el pcb
-	struct MemoryBlock *tmp_ant = NULL;		// Bloque anterior a tmp, para conectar la lista
+	struct MemoryBlock *tmp = m->head;		/* Bloque libre donde se guarda el pcb */
+	struct MemoryBlock *tmp_ant = NULL;		/* Bloque anterior a tmp, para conectar la lista */
 	enum AlgorithmMem alg = s->alg_memory;
 	int blocks_needed = (p->mem.required_kb + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
@@ -1315,18 +1319,44 @@ void update_gantt(struct Simulator *s)
 }
 
 /* Main loop */
+void sleep_microseconds(unsigned int microseconds)
+{
+	static HANDLE timer = NULL;
+	LARGE_INTEGER due_time;
+
+	if (timer == NULL)
+		timer = CreateWaitableTimer(NULL, TRUE, NULL);
+
+	if (timer != NULL) {
+		due_time.QuadPart = -((LONGLONG)microseconds * 10);
+		if (SetWaitableTimer(timer, &due_time, 0, NULL, NULL, FALSE)) {
+			WaitForSingleObject(timer, INFINITE);
+			return;
+		}
+	}
+
+	Sleep((microseconds + 999) / 1000);
+}
+
 bool stdin_has_data(void)
 {
-	/* Explicar poll (no entiendo)
+	HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+	DWORD available = 0;
+
+	if (input == NULL || input == INVALID_HANDLE_VALUE)
+		return false;
+
+	/*
+	 * Python inicia este programa con stdin conectado a una tubería.
+	 * PeekNamedPipe permite comprobar si hay una orden sin bloquear
+	 * el ciclo de simulación.
 	 */
-	struct pollfd fds;
+	if (GetFileType(input) == FILE_TYPE_PIPE)
+		return PeekNamedPipe(input, NULL, 0, NULL, &available, NULL)
+			&& available > 0;
 
-	fds.fd = 0;		/* stdin */
-	fds.events = POLLIN;	/* revisar si existe algo */
-
-	int ret = poll(&fds, 1, 0);	/* retorno = poll(fds, cant, t_espera) */
-	
-	return (ret > 0 && (fds.revents & POLLIN));	/* Ocurrió un evento POLLIN (ni idea) */
+	/* También permite ejecutar el simulador manualmente en una consola. */
+	return WaitForSingleObject(input, 0) == WAIT_OBJECT_0;
 }
 
 void process_stdin(struct Simulator *s, char *line)
@@ -1466,11 +1496,11 @@ int main(void)
 
 	srand((unsigned int)time(NULL));
 
-	setvbuf(stdin,  NULL, _IONBF, 0);	/* poll y fgets deben ver las mismas órdenes */
+	setvbuf(stdin,  NULL, _IONBF, 0);	/* La tubería y fgets ven las mismas órdenes */
 	setvbuf(stdout, NULL, _IOLBF, 0);	/* stdout sale linea por linea (como un printf creo) */
 
 	while (s->state != SIM_STOP) {
-		usleep(TICK_US);
+		sleep_microseconds(TICK_US);
 
 		if (stdin_has_data()) {
 			if (fgets(line, sizeof(line), stdin) != NULL)

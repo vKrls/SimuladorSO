@@ -88,7 +88,7 @@ class SimulationResult:
 class SimulationClient:
     def __init__(self, c_executable: Path | None = None):
         project_root = Path(__file__).resolve().parents[2]
-        self.c_executable = c_executable or project_root / "build" / "main"
+        self.c_executable = c_executable or project_root / "build" / "main.exe"
         self._next_pid = 0
         self._processes_by_algorithm: dict[str, list[UiProcess]] = {}
         self._random_requests_by_algorithm: dict[str, int] = {}
@@ -324,6 +324,8 @@ class SimulationClient:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             bufsize=1,
         )
         self._start_reader(self._process.stdout, self._stdout_queue)
