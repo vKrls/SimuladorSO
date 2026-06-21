@@ -113,10 +113,10 @@ class Execute_Tab(QTabWidget):
         layout.setContentsMargins(8, 4, 8, 4)
         value = QLabel("0")
         value.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        value.setStyleSheet(f"color: {color}; font-size: 18px; font-weight: bold;")
+        value.setStyleSheet("color: #ffffff; font-size: 18px; font-weight: bold;")
         name = QLabel(label)
         name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        name.setStyleSheet("color: #484f58; font-size: 8px;")
+        name.setStyleSheet("color: #ffffff; font-size: 8px;")
         layout.addWidget(value)
         layout.addWidget(name)
         self.counters[label] = value
@@ -442,10 +442,18 @@ class Execute_Tab(QTabWidget):
 
         if segments:
             last = segments[-1]
-            self.cpu_process.setText(
-                f"Último: {last.get('name', '--')} [PID {last.get('pid', '-')}]  "
-                f"t={float(last.get('start', 0)):.1f}"
-            )
+            kind = str(last.get("kind", "PROCESS"))
+            if kind == "IDLE":
+                text = f"CPU inactiva desde t={float(last.get('start', 0)):.1f}"
+            elif kind == "CONTEXT_SWITCH":
+                text = f"Cambio de contexto en t={float(last.get('start', 0)):.1f}"
+            else:
+                text = (
+                    f"Último: {last.get('name', '--')} "
+                    f"[PID {last.get('pid', '-')}]  "
+                    f"t={float(last.get('start', 0)):.1f}"
+                )
+            self.cpu_process.setText(text)
             self.cpu_process.setStyleSheet("color: #8b949e; font-size: 11px;")
             self.cpu_progress.setValue(0)
             return

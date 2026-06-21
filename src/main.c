@@ -6,8 +6,9 @@
 #include <time.h>
 #include <poll.h>
 
-#define TICK		0.001	/* Cuanto avanza (u.t.) en cada iteracion */
-#define TICK_US		250	/* US = MICROSEGUNDOS, 1000 us = 1 ms */
+/* ~ 1 seg */
+#define TICK		0.1	/* Cuanto avanza (u.t.) en cada iteracion */
+#define TICK_US		100000	/* 100 000 us = 100 ms */
 #define TIME_EPSILON	1e-9
 
 #define TOTAL_BLOCKS	1024	/* bloquecitos de memoria */
@@ -35,42 +36,46 @@ enum AlgorithmSched {
 
 enum AlgorithmMem {
 	FIRST	= 0,
-	BEST 	= 1,
+	BEST	= 1,
 	WORST 	= 2
 };
 
 enum ProcessState {
-	NEW         = 0,
-	READY       = 1,
-	RUNNING     = 2,
-	BLOCKED     = 3,
-	TERMINATED  = 4,
-	ERROR_STATE = 5
+	NEW		= 0,
+	READY		= 1,
+	RUNNING		= 2,
+	BLOCKED		= 3,
+	TERMINATED	= 4,
+	ERROR_STATE	= 5
 };
 
 enum IoDevice {
-	IO_NONE     = -1,
-	IO_KEYBOARD = 0,
-	IO_DISK     = 1,
-	IO_PRINTER  = 2
+	IO_NONE		= -1,
+	IO_KEYBOARD	= 0,
+	IO_DISK		= 1,
+	IO_PRINTER	= 2
 };
 
 enum IntType {
 	/* Interrupciones de Hardware */
-	INT_HW_IO           = 0,    /* I/O Devices        */
-	INT_HW_TIMER        = 1,    /* Reloj del sistema  */
-	
+	INT_HW_IO		= 0,    /* I/O Devices        */
+	INT_HW_TIMER		= 1,    /* Reloj del sistema  */
+
 	/* Interrupciones de Software */
-	INT_SW_SYSCALL      = 2,    /* Llamada al sistema */
-	
+	INT_SW_SYSCALL		= 2,    /* Llamada al sistema */
+
 	/* Excepciones */
-	INT_EXC_DIV_ZERO    = 3,    /* Error división entre cero */
-	INT_EXC_MEM         = 4     /* Error de acceso a memoria */
+	INT_EXC_DIV_ZERO	= 3,    /* Error división entre cero */
+	INT_EXC_MEM		= 4     /* Error de acceso a memoria */
+};
+
+enum GanttType {
+	GANTT_PROCESS		= 0,
+	GANTT_IDLE		= 1,
+	GANTT_CONTEXT_SWITCH	= 2,
 };
 
 struct CpuContext {
-	bool new;	/* Saber si crear o actualizar */
-
 	int program_counter;
 	int stack_pointer;
 };
@@ -79,11 +84,11 @@ struct SchedulerData {
 	double arrival_time;
 	double burst_time;
 	double remaining_time;
-	double start_time;
-	double finish_time;
-	double waiting_time;
-	double turnaround_time;
-	double response_time;
+	double start_time;		/* Primera vez que se vuelve running */
+	double finish_time;		/* Termina */
+	double waiting_time;		/* turnaround - burst */
+	double turnaround_time;		/* finish - arrival */
+	double response_time;		/* start - arrival */
 
 	int    priority;
 	double remaining_quantum;
@@ -99,21 +104,24 @@ struct MemoryData {
 };
 
 struct IoData{
-	bool	has_io;
+	bool has_io;
+	bool started;
+	bool completed;
 
-	float	start_time;
-	float	duration;
+	double start_time;
+	double duration;
+	double remaining_time;
 
 	enum IoDevice device;
 };
 
-struct Interrupt {
-	int		int_count;
-	int		int_done;
-	double		next_int;
+struct Interrupt {		/* falta */
+	int int_count;
+	int int_done;
+	double next_int;
 };
 
-struct ErrorData {
+struct ErrorData {		/* falta */
 	bool has_error;
 	char error_code[ERR_CODE_MAX];
 	char error_desc[ERR_DESC_MAX];
@@ -122,14 +130,14 @@ struct ErrorData {
 struct Pcb {
 	char name[16];
 	int pid;
-	
+
 	enum ProcessState	state;
 	struct CpuContext	cpu_ctx;
 	struct MemoryData	mem;
 	struct SchedulerData	sched;
 	struct IoData		io;
 	struct ErrorData	err;
-	
+
 	struct Interrupt	interrupt;
 };
 
@@ -149,7 +157,7 @@ struct MemoryBlock {
 	int limit;
 	int length;
 	int owner;
-	
+
 	struct MemoryBlock *next;
 };
 
@@ -158,7 +166,7 @@ struct MemoryBlockList {
 
 	struct MemoryBlock *head;
 	struct MemoryBlock *tail;
-	
+
 	struct MemoryBlock *max; /* Puntero al mayor espacio libre */
 	int free;
 };
@@ -166,6 +174,8 @@ struct MemoryBlockList {
 struct GanttNode {
 	double start;
 	double limit;
+
+	enum GanttType type;
 	int owner;
 	char name[16];
 
@@ -178,25 +188,13 @@ struct GanttList {
 	struct GanttNode *head;
 };
 
-struct ContextNode {
-	int *pid;
-	struct CpuContext ctx;
-	
-	struct ContextNode *next;
-};
-
-struct ContextList {
-	int count;
-	struct ContextNode *head;
-};
-
 struct Simulator {
 	enum SimulatorState state;
 	enum AlgorithmSched alg_sched;
 
 	struct Queue created_processes;
-	
-	/* Scheduler largo plazo */
+
+	/* Scheduler */
 	struct Queue job_q;
 	struct Queue ready_q;
 	struct Queue io_q;
@@ -204,27 +202,29 @@ struct Simulator {
 
 	/* Cosas de interrupciones, i/o, etc (zzz) */
 	enum IntType interrupt_q;
-	
+
 	/* Memoria */
 	struct MemoryBlockList memory_list;
 	enum AlgorithmMem alg_memory;
-	
+
 	/* Estado CPU */
 	struct Pcb *running;
+	struct CpuContext cpu_ctx;
 	bool cpu_busy;
-	
-	/* Dispatcher */
-	struct ContextList context_list;
+
 	struct Pcb *next_pcb;
-	
+
 	/* Diagrama de Gantt */
 	struct GanttList gantt;
-	
+
 	/* Datos de simulación */
 	double current_time;
 
 	double quantum;
+	int switch_cost;	/* muy dificil */
 	
+	int sim_speed;
+
 	int next_pid;
 };
 
@@ -234,7 +234,7 @@ void log_run(void);
 void log_add(struct Pcb *);
 void log_pause(void);
 void log_stop(void);
-/* Imprimir - Deprecated */
+/* Debug */
 void print_pcb(struct Pcb *);
 void print_queue(struct Queue *);
 void print_memory(struct MemoryBlockList *);
@@ -242,6 +242,7 @@ void print_main_loop(struct Simulator *);
 /* Enviar datos a Python */
 const char *process_state_name(enum ProcessState);
 const char *io_device_name(enum IoDevice);
+const char *gantt_type_name(enum GanttType);
 void send_json_string(const char *);
 void send_pcb_data(struct Pcb *);
 void send_queue_data(const char *, struct Queue *);
@@ -249,10 +250,10 @@ void send_memory_data(struct MemoryBlockList *);
 void send_running_data(struct Pcb *);
 void send_gantt_data(struct Simulator *);
 void send_data(struct Simulator *);
+/* Cálculo estadísticas */
 /* Iniciar */
 struct Queue init_queue(void);
 struct MemoryBlockList mem_init(void);
-struct ContextList ctx_init(void);
 struct GanttList gantt_init(void);
 struct Simulator simulator_init(void);
 /* Gestion colas */
@@ -272,6 +273,8 @@ void update_max_mem(struct MemoryBlockList *);
 /* Dispatcher */
 void dispatch(struct Simulator *);
 void dispatch_save_ctx(struct Simulator *);
+void dispatch_restore_ctx(struct Simulator *, struct Pcb *);
+void context_switch(struct Simulator *, struct Pcb *);
 /* Long-Term Scheduler*/
 void process_arrival(struct Simulator *);
 void job_scheduler(struct Simulator *);
@@ -284,21 +287,24 @@ struct Pcb *alg_priority(struct Simulator *);
 struct Pcb create_pcb(struct Simulator *, char *, int, double, double, int);
 void create_random_processes(struct Simulator *);
 /* Diagrama de Gantt */
-
-/* Maquina de estados */
-void set_process_state(struct Simulator *, struct Pcb *, enum ProcessState);
+void update_gantt_tick(struct Simulator *, enum GanttType, struct Pcb *);
+/* Io */
+void running_to_blocked(struct Simulator *);
+void blocked_to_ready(struct Simulator *, struct Pcb *);
+void tick_io_q(struct Simulator *);
 /* Main loop */
 bool stdin_has_data(void);
 void process_stdin(struct Simulator *, char *);
 bool should_preempt(struct Simulator *);
 void tick_running_process(struct Simulator *);
+bool simulation_finished(struct Simulator *);
 void main_loop(struct Simulator *);
 
 /* Log */
 void log_config(struct Simulator *s)
 {
-	printf("Configuración aplicada: planificador=%d, memoria=%d, quantum=%.3f.\n",
-		s->alg_sched, s->alg_memory, s->quantum);
+	printf("Configuración aplicada: planificador=%d, memoria=%d, costo=%d, quantum=%.3f.\n",
+		s->alg_sched, s->alg_memory, s->switch_cost, s->quantum);
 }
 
 void log_run(void)
@@ -321,7 +327,7 @@ void log_stop(void)
 	printf("Simulación terminada.\n");
 }
 
-/* Imprimir */
+/* Debug */
 void print_pcb(struct Pcb *p)
 {
 	printf("%-6s %-5d %-9d %-6.2f %-10.2f %-9.2f %-9d %-8d %-8d\n",
@@ -333,12 +339,12 @@ void print_pcb(struct Pcb *p)
 void print_queue(struct Queue *q)
 {
 	struct Node *tmp = q->head;
-	
+
 	while (tmp != NULL) {
 		print_pcb(tmp->pcb);
 		tmp = tmp->next;
 	}
-	
+
 	free(tmp);
 }
 
@@ -362,33 +368,33 @@ void print_memory(struct MemoryBlockList *m) {
 	printf("%d\n", TOTAL_BLOCKS);
 }
 
-/* Deprecated */
-// void print_main_loop(struct Simulator *s)
-// {
-// 	printf("\033[H\033[J");
-		
-// 	printf("\njob_q:\n");
-// 	printf("%-6s %-5s %-9s %-6s %-10s %-9s %-9s %-8s %-8s\n", "Name", "Pid", "Mem_req", "Burst", "Remaining", "Arrival", "B_needed", "Blocks", "Waste(kb)");
-// 	print_queue(&s->job_q);
-	
-// 	printf("\nready_q:\n");
-// 	printf("%-6s %-5s %-9s %-6s %-10s %-9s %-9s %-8s %-8s\n", "Name", "Pid", "Mem_req", "Burst", "Remaining", "Arrival", "B_needed", "Blocks", "Waste(kb)");
-// 	print_queue(&s->ready_q);
-	
-// 	printf("\nfinished_q:\n");
-// 	printf("%-6s %-5s %-9s %-6s %-10s %-9s %-9s %-8s %-8s\n", "Name", "Pid", "Mem_req", "Burst", "Remaining", "Arrival", "B_needed", "Blocks", "Waste(kb)");
-// 	print_queue(&s->finished_q);
-	
-// 	printf("\nMemory list: (Free: %d)\n", s->memory_list.free);
-// 	print_memory(&s->memory_list);
-	
-// 	printf("\nRunning: %s\n", s->running == NULL ? "false" : "true");
-// 	printf("%-6s %-5s %-9s %-6s %-10s %-9s %-9s %-8s %-8s\n", "Name", "Pid", "Mem_req", "Burst", "Remaining", "Arrival", "B_needed", "Blocks", "Waste(kb)");
-// 	if (s->running != NULL)
-// 		print_pcb(s->running);
-	
-// 	fflush(stdout);
-// }
+/* Legacy - reemplazado por send_data() */
+void print_main_loop(struct Simulator *s)
+{
+	printf("\033[H\033[J");
+
+	printf("\njob_q:\n");
+	printf("%-6s %-5s %-9s %-6s %-10s %-9s %-9s %-8s %-8s\n", "Name", "Pid", "Mem_req", "Burst", "Remaining", "Arrival", "B_needed", "Blocks", "Waste(kb)");
+	print_queue(&s->job_q);
+
+	printf("\nready_q:\n");
+	printf("%-6s %-5s %-9s %-6s %-10s %-9s %-9s %-8s %-8s\n", "Name", "Pid", "Mem_req", "Burst", "Remaining", "Arrival", "B_needed", "Blocks", "Waste(kb)");
+	print_queue(&s->ready_q);
+
+	printf("\nfinished_q:\n");
+	printf("%-6s %-5s %-9s %-6s %-10s %-9s %-9s %-8s %-8s\n", "Name", "Pid", "Mem_req", "Burst", "Remaining", "Arrival", "B_needed", "Blocks", "Waste(kb)");
+	print_queue(&s->finished_q);
+
+	printf("\nMemory list: (Free: %d)\n", s->memory_list.free);
+	print_memory(&s->memory_list);
+
+	printf("\nRunning: %s\n", s->running == NULL ? "false" : "true");
+	printf("%-6s %-5s %-9s %-6s %-10s %-9s %-9s %-8s %-8s\n", "Name", "Pid", "Mem_req", "Burst", "Remaining", "Arrival", "B_needed", "Blocks", "Waste(kb)");
+	if (s->running != NULL)
+		print_pcb(s->running);
+
+	fflush(stdout);
+}
 
 const char *process_state_name(enum ProcessState state)
 {
@@ -411,6 +417,16 @@ const char *io_device_name(enum IoDevice device)
 		case IO_DISK:     return "DISK";
 		case IO_PRINTER:  return "PRINTER";
 		default:          return "NONE";
+	}
+}
+
+const char *gantt_type_name(enum GanttType type)
+{
+	switch (type) {
+		case GANTT_PROCESS:        return "PROCESS";
+		case GANTT_IDLE:           return "IDLE";
+		case GANTT_CONTEXT_SWITCH: return "CONTEXT_SWITCH";
+		default:                   return "UNKNOWN";
 	}
 }
 
@@ -533,6 +549,8 @@ void send_gantt_nodes(struct GanttNode *node, bool *first)
 
 	printf("{\"pid\":%d,\"name\":", node->owner);
 	send_json_string(node->name);
+	printf(",\"kind\":");
+	send_json_string(gantt_type_name(node->type));
 	printf(",\"start\":%.3f,\"limit\":%.3f,\"duration\":%.3f}",
 		node->start, node->limit, node->limit - node->start);
 	*first = false;
@@ -570,11 +588,11 @@ void send_data(struct Simulator *s)
 struct Queue init_queue(void)
 {
 	struct Queue q;
-	
+
 	q.cont = 0;
         q.head = NULL;
         q.tail = NULL;
-	
+
 	return q;
 }
 
@@ -582,35 +600,25 @@ struct MemoryBlockList mem_init(void)
 {
 	struct MemoryBlockList m;
 	struct MemoryBlock *mb = malloc(sizeof(struct MemoryBlock));
-	
+
 	if (!mb) {
 		fprintf(stderr, "OOM en mem_init.\n");
 		exit(1);
 	}
-	
+
 	mb->start  = 0;
 	mb->limit  = TOTAL_BLOCKS;
 	mb->length = TOTAL_BLOCKS;
 	mb->owner  = -1;
 	mb->next   = NULL;
-	
+
 	m.cont = 1;
 	m.head = mb;
 	m.tail = mb;
 	m.max  = mb;
 	m.free = TOTAL_BLOCKS;
-	
+
 	return m;
-}
-
-struct ContextList ctx_init(void) // head -> cn -> ... -> c1 -> c0 -> NULL
-{
-	struct ContextList ctx;
-
-	ctx.count = 0;
-	ctx.head = NULL;
-
-	return ctx;
 }
 
 struct GanttList gantt_init(void)
@@ -631,27 +639,32 @@ struct Simulator simulator_init(void)
 	s.alg_sched = FCFS;
 	s.alg_memory = FIRST;
 	s.quantum = 1.0f;
+	s.switch_cost = 1;
 
 	s.created_processes = init_queue();
-	
+
 	s.job_q		= init_queue();
 	s.ready_q	= init_queue();
 	s.io_q		= init_queue();
 	s.finished_q	= init_queue();
-	
+
 	s.memory_list	= mem_init();
-	
-	s.context_list	= ctx_init();
-	
+
 	s.gantt 	= gantt_init();
 
 	s.running	= NULL;
 	s.next_pcb	= NULL;
 	s.cpu_busy	= false;
-	
+
 	s.current_time	= 0;
-	
+
+	/* va de ~1.05 a 16.51 */
+	s.sim_speed	= 5;
+
 	s.next_pid	= 0;
+
+	s.cpu_ctx.program_counter	= 0;
+	s.cpu_ctx.stack_pointer		= 0;
 
 	return s;
 }
@@ -660,15 +673,15 @@ struct Simulator simulator_init(void)
 void enqueue(struct Queue *q, struct Pcb *p)	// Encola en head y crece hacia la derecha (tail)
 {						// head -> p0 -> p1 -> p2 <- tail
 	struct Node *node = malloc(sizeof(struct Node));
-	
+
 	if (!node) {
 		fprintf(stderr, "OOM en create_node.\n");
 		exit(1);
 	}
-	
+
 	node->pcb = p;
 	node->next = NULL;
-	
+
 	if (q_empty(q)) {
 		q->tail = node;
 		q->head = node;
@@ -676,7 +689,7 @@ void enqueue(struct Queue *q, struct Pcb *p)	// Encola en head y crece hacia la 
 		q->tail->next = node;
 		q->tail	= node;
 	}
-	
+
 	q->cont++;
 }
 
@@ -684,13 +697,13 @@ struct Pcb *dequeue_last(struct Queue *q)	// Se usa solo si q->cont == 1
 {						// o sea queda UN solo elemento
 	struct Node *tmp = q->head;
 	struct Pcb *p = tmp->pcb;
-	
+
 	q->cont = 0;
 	q->head = NULL;
 	q->tail = NULL;
-	
+
 	free(tmp);
-	
+
 	return p;
 }
 
@@ -698,15 +711,15 @@ struct Pcb *dequeue_head(struct Queue *q)
 {
 	if (q->cont == 1)
 		return dequeue_last(q);
-	
+
 	struct Node *old_head = q->head;
 	struct Pcb *p = old_head->pcb;
-	
+
 	q->head = q->head->next;
 	q->cont--;
-	
+
 	free(old_head);
-	
+
 	return p;
 }
 
@@ -714,50 +727,50 @@ struct Pcb *dequeue_tail(struct Queue *q)
 {
 	if (q->cont == 1)
 		return dequeue_last(q);
-	
+
 	struct Node *old_tail = q->tail;
 	struct Node *tmp = q->head;
 	struct Pcb *p = old_tail->pcb;
 
 	while (tmp->next != q->tail)
 		tmp = tmp->next;
-	
+
 	tmp->next = NULL;
 	q->tail = tmp;
 
 	q->cont--;
-	
+
 	free(old_tail);
-	
+
 	return p;
 }
 
 void dequeue_pcb(struct Queue *q, struct Pcb *p) // Solo si p != NULL
-{    
+{
 	struct Node *tmp_back;
 	struct Node *tmp_pcb;
 	int pid = p->pid;
-	
+
 	if (q->tail->pcb->pid == pid) {
 		dequeue_tail(q);
 		return;
 	}
-	
+
 	if (q->head->pcb->pid == pid) {
 		dequeue_head(q);
 		return;
 	}
-	
+
 	tmp_back = q->head;
-	
+
 	while (tmp_back->next->pcb->pid != pid)
 		tmp_back = tmp_back->next;
-	
+
 	tmp_pcb = tmp_back->next;
 	tmp_back->next = tmp_pcb->next;
-	
+
 	q->cont--;
-	
+
 	free(tmp_pcb);
 }
 
@@ -787,13 +800,13 @@ bool allocate_block(struct MemoryBlockList *m,
 		fprintf(stderr, "OOM en allocate_block.\n");
 		return false;
 	}
-	
+
 	mb->start = curr->start;
 	mb->limit = curr->start + blocks_needed;
 	mb->length = blocks_needed;
 	mb->owner = p->pid;
 	mb->next = curr;
-	
+
 	if (ant != NULL) {
 		ant->next = mb;
 	} else {
@@ -821,7 +834,7 @@ bool allocate_block(struct MemoryBlockList *m,
 	p->mem.limit = mb->limit;
 	p->mem.assigned_blocks = blocks_needed;
 	p->mem.waste_kb = blocks_needed * BLOCK_SIZE - p->mem.required_kb;
-	
+
 	m->free -= blocks_needed;
 	update_max_mem(m);
 
@@ -850,12 +863,12 @@ bool kmalloc(struct Simulator *s, struct Pcb *p)
 		while (tmp != NULL) {
 			if (tmp->owner == -1 && blocks_needed <= tmp->length)
 				return allocate_block(m, tmp, tmp_ant, p, blocks_needed);
-			
+
 			tmp_ant = tmp;
 			tmp = tmp->next;
 		}
 	}
-	
+
 	if (alg == BEST) {
 		struct MemoryBlock *best = NULL;
 		struct MemoryBlock *best_ant = NULL;
@@ -864,7 +877,7 @@ bool kmalloc(struct Simulator *s, struct Pcb *p)
 		while (tmp != NULL) {
 			if (tmp->owner == -1 && blocks_needed <= tmp->length && tmp->length <= min) {
 				min = tmp->length;
-			
+
 				best_ant = tmp_ant;
 				best = tmp;
 			}
@@ -901,15 +914,15 @@ void kfree(struct MemoryBlockList *m, struct Pcb *p)
 		if (tmp->owner == p->pid) {
 			tmp->owner = -1;
 			m->free += tmp->length;
-			
+
 			update_max_mem(m);
-			
+
 			if ((tmp_ant != NULL && tmp_ant->owner == -1) || (tmp->next != NULL && tmp->next->owner == -1))
 				kmerge(m);
-			
+
 			return;
 		}
-		
+
 		tmp_ant = tmp;
 		tmp = tmp->next;
 	}
@@ -944,13 +957,13 @@ void kmerge(struct MemoryBlockList *m)
 void update_max_mem(struct MemoryBlockList *m)
 {
 	struct MemoryBlock *tmp = m->head;
-	
+
 	m->max = NULL;
-	
+
 	while (tmp != NULL) {
 		if (tmp->owner == -1 && (m->max == NULL || tmp->length > m->max->length))
 			m->max = tmp;
-		
+
 		tmp = tmp->next;
 	}
 }
@@ -958,18 +971,16 @@ void update_max_mem(struct MemoryBlockList *m)
 /* Dispatcher */
 void dispatch(struct Simulator *s)
 {
-	if (s->next_pcb == NULL)	// No hace falta creo
+	if (s->next_pcb == NULL)	/* No hace falta creo */
 		return;
-	
-	dispatch_save_ctx(s);
-	
-	s->running = s->next_pcb;
+
+	struct Pcb *next = s->next_pcb;
 	s->next_pcb = NULL;
-	
-	s->running->state = RUNNING;
-	
+
+	context_switch(s, next);	/* cambio */
+
 	struct SchedulerData *sc = &s->running->sched;
-	
+
 	if (sc->start_time < 0) {
 		sc->start_time = s->current_time;
 		sc->response_time = sc->start_time - sc->arrival_time;
@@ -977,53 +988,52 @@ void dispatch(struct Simulator *s)
 
 	if (s->alg_sched == ROUND && sc->remaining_quantum <= 0)
 		sc->remaining_quantum = s->quantum;
-	
+
 	s->cpu_busy = true;
 }
 
 void dispatch_save_ctx(struct Simulator *s)
 {
-	struct Pcb *p = s->running;
-	struct ContextList *c = &s->context_list;
-	struct ContextNode *tmp;
-	
-	/* No hay contexto para guardar */
+	if (s->running == NULL)	/* muchas validaciones */
+		return;
+
+	s->running->cpu_ctx = s->cpu_ctx;
+}
+
+void dispatch_restore_ctx(struct Simulator *s, struct Pcb *p)
+{
 	if (p == NULL)
 		return;
 
-	for (tmp = c->head; tmp != NULL; tmp = tmp->next) {
-		if (*tmp->pid == p->pid) {
-			tmp->ctx = p->cpu_ctx;
-			p->cpu_ctx.new = false;
-			return;
-		}
-	}
+	s->cpu_ctx = p->cpu_ctx;
+}
 
-	struct ContextNode *cn = malloc(sizeof(struct ContextNode));
+void context_switch(struct Simulator *s, struct Pcb *next)
+{
+	if (next == NULL)
+		return;
 
-	if (!cn) {
-		fprintf(stderr, "OOM en save_ctx.\n");
-		exit(1);
-	}
+	dispatch_save_ctx(s);		/* Guardar proceso anterior */
 
-	cn->ctx = p->cpu_ctx;
-	cn->pid = &p->pid;
-	cn->next = c->head;
-	c->head = cn;
-	c->count++;
-	p->cpu_ctx.new = false;
+	s->running = next;		/* Cargar nuevo proceso */
+	dispatch_restore_ctx(s, next);
+
+	s->running->state = RUNNING;
+	s->cpu_busy = true;
 }
 
 void terminate_running_process(struct Simulator *s)
 {
 	struct Pcb *p = s->running;
-	
+
 	if (p == NULL)		// No necesario creo
 		return;
-	
+
+	dispatch_save_ctx(s);
+
 	struct SchedulerData *sc = &p->sched;
-	
-	sc->remaining_time = 0;
+
+	sc->remaining_time = 0.0;
 	sc->finish_time = s->current_time;
 	sc->turnaround_time = sc->finish_time - sc->arrival_time;
 	sc->waiting_time = sc->turnaround_time - sc->burst_time;
@@ -1039,7 +1049,7 @@ void terminate_running_process(struct Simulator *s)
 
 /* Long-Term Scheduler */
 void process_arrival(struct Simulator *s)	// Simula llegada a job_q
-{	
+{
 	struct Queue *cq = &s->created_processes;
 	struct Queue *jq = &s->job_q;
 	struct Node *tmp = cq->head;
@@ -1049,7 +1059,7 @@ void process_arrival(struct Simulator *s)	// Simula llegada a job_q
 
 		tmp = tmp->next;
 
-		if (p->sched.arrival_time <= s->current_time) {
+		if (p->sched.arrival_time <= s->current_time + TIME_EPSILON) {
 			enqueue(jq, p);
 			dequeue_pcb(cq, p);
 		}
@@ -1057,16 +1067,16 @@ void process_arrival(struct Simulator *s)	// Simula llegada a job_q
 }
 
 void job_scheduler(struct Simulator *s)		// Long-Term Scheduler / Largo plazo
-{						// Agarra procesos de job_q y 
+{						// Agarra procesos de job_q y
 	struct Queue *jq = &s->job_q;		// los mete a ready_q
 	struct Queue *rq = &s->ready_q;
 	struct Node *tmp = jq->head;
 
 	while (tmp != NULL) {
 		struct Pcb *p = tmp->pcb;
-		
+
 		tmp = tmp->next;
-		
+
 		/* Para procesos nuevos (NEW) */
 		if (p->state == NEW && p->sched.arrival_time <= s->current_time) {
 			if (p->mem.required_kb <= 0 ||
@@ -1085,7 +1095,7 @@ void job_scheduler(struct Simulator *s)		// Long-Term Scheduler / Largo plazo
 				continue;
 
 			p->state = READY;
-			
+
 			enqueue(rq, p);
 			dequeue_pcb(jq, p);
 		}
@@ -1124,7 +1134,7 @@ void scheduler(struct Simulator *s)
 			p = alg_priority(s);
 			s->next_pcb = p;
 			break;
-		
+
 		default:
 			s->next_pcb = NULL;
 			break;
@@ -1180,17 +1190,16 @@ struct Pcb create_pcb(struct Simulator *s, char *name, int mem_kb,
 		      double burst, double arrival, int priority)
 {
 	struct Pcb p = {0};
-	
+
 	snprintf(p.name, sizeof(p.name), "%s", name);
-	
+
 	p.pid   = s->next_pid++;
 	p.state = NEW;
-	
+
 	/* CPU Context */
-	p.cpu_ctx.new			= true;
 	p.cpu_ctx.program_counter 	= 0;
 	p.cpu_ctx.stack_pointer   	= 0;
-	
+
 	/* Scheduler Data */
 	p.sched.arrival_time		= arrival;
 	p.sched.burst_time		= burst;
@@ -1200,7 +1209,7 @@ struct Pcb create_pcb(struct Simulator *s, char *name, int mem_kb,
 	p.sched.waiting_time		=  0.0;
 	p.sched.turnaround_time		=  0.0;
 	p.sched.response_time		=  0.0;
-	
+
 	/* Memory Data */
 	p.mem.required_kb		= mem_kb;
 	p.mem.start			= -1;
@@ -1215,10 +1224,12 @@ struct Pcb create_pcb(struct Simulator *s, char *name, int mem_kb,
 	p.io.has_io = rand() % 2 == 0;  			/* la mitad de los procesos tienen I/O */
 	p.io.start_time = (float)(burst * (0.1 + (double)(rand() % 80) / 100.0));/* io entre el 10-90% del burst */
 	p.io.duration	= -1.0f;
-	p.io.device 	= IO_NONE;
-	
+	p.io.remaining_time = -1.0f;
+	p.io.device	= IO_NONE;
+
 	if (p.io.has_io) {
 		p.io.duration = 1.0f + (float)(rand() % 10);  	/* entre 1 y 10 u.t. */
+		p.io.remaining_time = p.io.duration;
 		p.io.device = (enum IoDevice)(rand() % 3);
 	}
 	/* 0.5% de los procesos presentan error */
@@ -1228,17 +1239,17 @@ struct Pcb create_pcb(struct Simulator *s, char *name, int mem_kb,
 		snprintf(p.err.error_code, sizeof(p.err.error_code), "ERR_%d", p.pid);
 		snprintf(p.err.error_desc, sizeof(p.err.error_desc), "Error en el proceso %d", p.pid);
 	}
-	
+
 	/* Interrupciones - entre 5 y 20, proporcional al burst y memoria */
 	double factor = (burst / 100.0 + mem_kb / 1024.0) * 7.5; /* Rango: Burst 1-100 | Mem 1-1024 */
 	p.interrupt.int_count     = 5 + (int)(factor);
-		
+
 	if (p.interrupt.int_count > 20)
 		p.interrupt.int_count = 20;
-		
+
 	p.interrupt.int_done      = 0;
 	p.interrupt.next_int      = burst * (0.1 + (rand() % 80) / 100.0); /* Primera interrupcion a 10-90 % del burst */
-	
+
 	return p;
 }
 
@@ -1265,53 +1276,80 @@ void create_random_processes(struct Simulator *s)
 }
 
 /* Diagrama de Gantt */
-void create_gantt_node(struct Simulator *s)
+void update_gantt_tick(struct Simulator *s, enum GanttType type, struct Pcb *p)
 {
-	struct Pcb *p = s->running;
 	struct GanttList *g = &s->gantt;
-	struct GanttNode *new = malloc(sizeof(struct GanttNode));
+	struct GanttNode *head = g->head;
 
-	if (new == NULL) {
-		fprintf(stderr, "OOM en create_gantt_node.\n");
+	double start = s->current_time;
+	double limit = s->current_time + TICK;
+
+	int owner = -1;
+	const char *name = "IDLE";
+
+	if (type == GANTT_PROCESS && p != NULL) {
+		owner = p->pid;
+		name = p->name;
+	} else if (type == GANTT_CONTEXT_SWITCH) {
+		owner = -2;
+		name = "CS";
+	}
+
+	/* Se une con el segmento anterior si son del mismo tipo */
+	if (head != NULL &&
+	    head->type == type &&
+	    head->owner == owner) {
+		head->limit = limit;
 		return;
 	}
 
-	new->start = s->current_time - TICK;
-	new->limit = s->current_time;
-	new->owner = p->pid;
-	snprintf(new->name, sizeof(new->name), "%s", p->name);
-	new->next = NULL;
+	struct GanttNode *node = malloc(sizeof(struct GanttNode));
+
+	if (node == NULL) {
+		fprintf(stderr, "OOM en record_gantt_tick.\n");
+		return;
+	}
+
+	node->start = start;
+	node->limit = limit;
+	node->type = type;
+	node->owner = owner;
+	snprintf(node->name, sizeof(node->name), "%s", name);
+
+	node->next = g->head;
+	g->head = node;
 
 	g->cont++;
-
-	if (g->head == NULL) {
-		g->head = new;
-		return;
-	}
-
-	new->next = g->head;
-	g->head = new;
 }
 
-void update_gantt(struct Simulator *s)
+/* Io */
+void running_to_blocked(struct Simulator *s)
 {
 	struct Pcb *p = s->running;
-	struct GanttNode *h = s->gantt.head;
 
-	/* CPU idle */
-	if (!s->cpu_busy)
+	if (p == NULL)
 		return;
 
-	/* Primer proceso */
-	if (h == NULL) {
-		create_gantt_node(s);
-		return;
-	}
+	dispatch_save_ctx(s);
 
-	if (p->pid == h->owner)	/* Actualizar */
-		h->limit = s->current_time;
-	else				/* Nuevo */
-		create_gantt_node(s);
+	p->state = BLOCKED;
+	p->io.started = true;
+	p->io.remaining_time = p->io.duration;
+
+	enqueue(&s->io_q, p);
+
+	s->running = NULL;
+	s->cpu_busy = false;
+}
+
+void blocked_to_ready(struct Simulator *s, struct Pcb *p)
+{
+	p->io.remaining_time = 0.0;
+	p->io.completed = true;
+	p->state = READY;
+
+	dequeue_pcb(&s->io_q, p);
+	enqueue(&s->ready_q, p);
 }
 
 /* Main loop */
@@ -1325,17 +1363,17 @@ bool stdin_has_data(void)
 	fds.events = POLLIN;	/* revisar si existe algo */
 
 	int ret = poll(&fds, 1, 0);	/* retorno = poll(fds, cant, t_espera) */
-	
+
 	return (ret > 0 && (fds.revents & POLLIN));	/* Ocurrió un evento POLLIN (ni idea) */
 }
 
 void process_stdin(struct Simulator *s, char *line)
 {
 	if (strncmp(line, "CONFIG", 6) == 0) {
-		int alg_sched, alg_mem;
+		int alg_sched, alg_mem, switch_cost;
 		double quantum;
 
-		sscanf(line, "CONFIG %d %d %lf", &alg_sched, &alg_mem, &quantum);
+		sscanf(line, "CONFIG %d %d %d %lf", &alg_sched, &alg_mem, &switch_cost, &quantum);
 
 		s->alg_sched 	= (enum AlgorithmSched)alg_sched;
 		s->alg_memory 	= (enum AlgorithmMem)alg_mem;
@@ -1366,6 +1404,10 @@ void process_stdin(struct Simulator *s, char *line)
 	} else if (strncmp(line, "RANDOM", 6) == 0) {
 		create_random_processes(s);
 		send_data(s);
+	} else if (strncmp(line, "SPEED", 5) == 0) {
+		int speed;
+		sscanf(line, "SPEED %d", &speed);
+		s->sim_speed = speed;
 	} else if (strncmp(line, "RUN", 3) == 0) {
 		s->state = SIM_RUN;
 		log_run();
@@ -1378,7 +1420,7 @@ void process_stdin(struct Simulator *s, char *line)
 	}
 }
 
-bool should_preempt(struct Simulator *s)
+bool should_preempt(struct Simulator *s)	/* Preempt sjf / prior */
 {
 	struct Node *tmp;
 
@@ -1397,6 +1439,21 @@ bool should_preempt(struct Simulator *s)
 	return false;
 }
 
+void tick_io_q(struct Simulator *s)
+{
+	struct Node *tmp = s->io_q.head;
+
+	while (tmp != NULL) {
+		struct Pcb *p = tmp->pcb;
+		tmp = tmp->next;		/* Se avanza antes de eliminar */
+
+		p->io.remaining_time -= TICK;
+
+		if (p->io.remaining_time <= TIME_EPSILON)
+			blocked_to_ready(s, p);
+	}
+}
+
 void tick_running_process(struct Simulator *s)
 {
 	struct Pcb *p = s->running;
@@ -1405,7 +1462,8 @@ void tick_running_process(struct Simulator *s)
 		return;
 
 	p->sched.remaining_time -= TICK;
-	p->cpu_ctx.program_counter++;	/* al fin el program counter (mostrar en hexa) */
+
+	s->cpu_ctx.program_counter++;	/* al fin el program counter (mostrar en hexa) */
 
 	if (s->alg_sched == ROUND)
 		p->sched.remaining_quantum -= TICK;
@@ -1415,46 +1473,94 @@ void tick_running_process(struct Simulator *s)
 		return;
 	}
 
-	if (s->alg_sched == ROUND && p->sched.remaining_quantum <= 0) {
+	if (p->io.has_io &&
+	    !p->io.started &&
+	    p->sched.burst_time - p->sched.remaining_time >= p->io.start_time) {
+		running_to_blocked(s);
+		return;
+	    }
+
+	if (s->alg_sched == ROUND &&
+	    p->sched.remaining_quantum <= TIME_EPSILON) {
+		dispatch_save_ctx(s);
+
 		p->sched.remaining_quantum = s->quantum;
 		p->state = READY;
 		enqueue(&s->ready_q, p);
+
 		s->running = NULL;
 		s->cpu_busy = false;
 	}
 }
 
+bool simulation_finished(struct Simulator *s)
+{
+	return q_empty(&s->created_processes) &&
+	       q_empty(&s->job_q) &&
+	       q_empty(&s->ready_q) &&
+	       q_empty(&s->io_q) &&
+	       s->running == NULL;
+}
+
 void main_loop(struct Simulator *s)
 {
-	if (s->created_processes.cont > 0)			/* Entran procesos a job_q */
-		process_arrival(s);				/* segun arrival_time */
-
-	if (s->job_q.cont > 0)					/* Si existen procesos no listos */
-		job_scheduler(s);				/* se agregan a ready_q */
+	process_arrival(s);
+	job_scheduler(s);
 
 	if (should_preempt(s)) {
-		s->running->state = READY;
-		enqueue(&s->ready_q, s->running);
-		scheduler(s);
-		dispatch(s);
+		struct Pcb *preempted = s->running;
+
+		dispatch_save_ctx(s);
+
+		preempted->state = READY;
+		enqueue(&s->ready_q, preempted);
+
+		s->running = NULL;
+		s->cpu_busy = false;
 	}
 
-	if (s->running == NULL && s->ready_q.cont > 0) {	/* Cpu libre y procesos listos */
-		scheduler(s);
-		dispatch(s);
+	if (simulation_finished(s)) {	/* evita registrar un idle o cs innecesario */
+		s->state = SIM_STOP;
+		send_data(s);
+		return;
 	}
 
-	update_gantt(s);
+	/* Cpu libre y proceso disponible: cambio de contexto */
+	if (s->running == NULL && !q_empty(&s->ready_q)) {
+		update_gantt_tick(s, GANTT_CONTEXT_SWITCH, NULL);
+
+		s->current_time += TICK;
+		tick_io_q(s);
+
+		scheduler(s);
+		dispatch(s);
+
+		send_data(s);
+		return;
+	}
+
+	/* Cpu sin procesos disponibles */
+	if (s->running == NULL) {
+		update_gantt_tick(s, GANTT_IDLE, NULL);
+
+		s->current_time += TICK;
+		tick_io_q(s);
+
+		send_data(s);
+		return;
+	}
+
+	/* Proceso ejecutando */
+	update_gantt_tick(s, GANTT_PROCESS, s->running);
+
+	s->current_time += TICK;
+
+	tick_io_q(s);
 	tick_running_process(s);
 
-	if (s->created_processes.cont == 0 &&
-	    s->job_q.cont == 0		   &&
-	    s->ready_q.cont == 0	   &&
-	    s->running == NULL)					/* Se terminan todos los procesos */
-		s->state = SIM_STOP;				/* y la CPU deja de trabajar */
+	if (simulation_finished(s))	/* el proceso actual acabo con la simulacion */
+		s->state = SIM_STOP;
 
-	/* Imprimir - deprecated */
-	// print_main_loop(s);
 	send_data(s);
 }
 
@@ -1470,7 +1576,7 @@ int main(void)
 	setvbuf(stdout, NULL, _IOLBF, 0);	/* stdout sale linea por linea (como un printf creo) */
 
 	while (s->state != SIM_STOP) {
-		usleep(TICK_US);
+		usleep((useconds_t)(TICK_US / s->sim_speed));
 
 		if (stdin_has_data()) {
 			if (fgets(line, sizeof(line), stdin) != NULL)
@@ -1480,7 +1586,6 @@ int main(void)
 		if (s->state == SIM_PAUSE)
 			continue;
 
-		s->current_time += TICK;
 		main_loop(s);
 	}
 

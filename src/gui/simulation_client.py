@@ -12,6 +12,12 @@ from gui.components.visual_widgets import PROCESS_COLORS
 
 RANDOM_PROCESS_COUNT = 5
 
+MEMORY_ALGORITHM_NAMES = {
+    0: "First Fit",
+    1: "Best Fit",
+    2: "Worst Fit",
+}
+
 
 @dataclass
 class ProcessData:
@@ -93,11 +99,54 @@ class SimulationClient:
         self._processes_by_algorithm: dict[str, list[UiProcess]] = {}
         self._random_requests_by_algorithm: dict[str, int] = {}
         self._random_quantum_by_algorithm: dict[str, float] = {}
+        self._speed_by_algorithm: dict[str, int] = {}
+        self._memory_algorithm = 0
         self._state_by_algorithm: dict[str, dict[str, Any]] = {}
         self._active_algorithm: str | None = None
         self._process: subprocess.Popen[str] | None = None
         self._stdout_queue: queue.Queue[str] = queue.Queue()
         self._stderr_queue: queue.Queue[str] = queue.Queue()
+
+    @property
+    def memory_algorithm(self) -> int:
+        return self._memory_algorithm
+
+    @property
+    def memory_algorithm_name(self) -> str:
+        return MEMORY_ALGORITHM_NAMES[self._memory_algorithm]
+
+    def set_memory_algorithm(self, algorithm: int) -> None:
+        if algorithm not in MEMORY_ALGORITHM_NAMES:
+            raise ValueError(f"Algoritmo de memoria inválido: {algorithm}")
+        self._memory_algorithm = algorithm
+
+    def configure_memory_algorithm(
+        self,
+        algorithm: str,
+        memory_algorithm: int,
+    ) -> SimulationResult:
+        self.set_memory_algorithm(memory_algorithm)
+        command = self.build_config_command(
+            algorithm,
+            self.processes_for(algorithm),
+        )
+        result = SimulationResult(
+            payload={
+                "memory_algorithm": self.memory_algorithm_name,
+                "sent": False,
+            },
+            command_lines=[command],
+        )
+
+        if not self.is_process_running() or self._active_algorithm != algorithm:
+            return result
+
+        try:
+            self.send_command(command)
+            result.payload["sent"] = True
+        except OSError as exc:
+            result.error = str(exc)
+        return result
 
     def processes_for(self, algorithm: str) -> list[UiProcess]:
         return list(self._processes_by_algorithm.get(algorithm, []))
@@ -122,6 +171,7 @@ class SimulationClient:
         self._processes_by_algorithm[algorithm] = []
         self._random_requests_by_algorithm[algorithm] = 0
         self._random_quantum_by_algorithm.pop(algorithm, None)
+        self._speed_by_algorithm.pop(algorithm, None)
         self._state_by_algorithm.pop(algorithm, None)
 
     def load_process(
@@ -130,10 +180,19 @@ class SimulationClient:
         process_data: ProcessData,
     ) -> tuple[UiProcess, SimulationResult]:
         process = self.add_process(algorithm, process_data)
-        result = self._load_commands(
-            algorithm,
-            [process.to_c_command()],
-        )
+        command = process.to_c_command()
+
+        if self.is_process_running() and self._active_algorithm == algorithm:
+            result = SimulationResult(
+                payload=self.build_payload(algorithm),
+                command_lines=[command],
+            )
+            try:
+                self.send_command(command)
+            except OSError as exc:
+                result.error = str(exc)
+        else:
+            result = self._load_commands(algorithm, [command])
         return process, result
 
     def request_random_processes(
@@ -158,6 +217,7 @@ class SimulationClient:
     def build_payload(self, algorithm: str) -> dict[str, Any]:
         return {
             "algorithm": algorithm,
+            "memory_algorithm": self.memory_algorithm_name,
             "processes": [process.to_payload() for process in self.processes_for(algorithm)],
             "random_requests": self._random_requests_by_algorithm.get(algorithm, 0),
         }
@@ -166,6 +226,7 @@ class SimulationClient:
         processes = self.processes_for(algorithm)
         return [
             self.build_config_command(algorithm, processes),
+            f"SPEED {self._speed_by_algorithm.get(algorithm, 5)}",
             *[process.to_c_command() for process in processes],
             "RUN",
         ]
@@ -179,19 +240,23 @@ class SimulationClient:
             "priority_nonpreemptive": 4,
             "priority_preemptive": 5,
         }.get(algorithm, 0)
-        memory_alg = 0
         quantum = 0.0
         if algorithm == "round_robin":
             quantum = next(
                 (process.quantum for process in processes if process.quantum > 0),
                 self._random_quantum_by_algorithm.get(algorithm, 1.0),
             )
-        return f"CONFIG {sched_alg} {memory_alg} {quantum:.3f}"
+        return f"CONFIG {sched_alg} {self._memory_algorithm} {quantum:.3f}"
 
     def run(self, algorithm: str, *, apply_events: bool = True) -> SimulationResult:
         payload = self.build_payload(algorithm)
         if self.is_process_running() and self._active_algorithm == algorithm:
-            command_lines = ["RUN"]
+            processes = self.processes_for(algorithm)
+            command_lines = [
+                self.build_config_command(algorithm, processes),
+                f"SPEED {self._speed_by_algorithm.get(algorithm, 5)}",
+                "RUN",
+            ]
         else:
             command_lines = self.build_c_commands(algorithm)
         result = SimulationResult(payload=payload, command_lines=command_lines)
@@ -217,6 +282,12 @@ class SimulationClient:
 
     def send_run(self) -> SimulationResult:
         return self._send_control("RUN")
+
+    def send_speed(self, algorithm: str, speed: int) -> SimulationResult:
+        self._speed_by_algorithm[algorithm] = speed
+        if not self.is_process_running() or self._active_algorithm != algorithm:
+            return SimulationResult(payload={}, command_lines=[f"SPEED {speed}"])
+        return self._send_control(f"SPEED {speed}")
 
     def stop(self) -> SimulationResult:
         result = self._send_control("STOP")
@@ -245,6 +316,14 @@ class SimulationClient:
                 for process in self.processes_for(algorithm)
             }
             for segment in event.get("segments", []):
+                kind = str(segment.get("kind", "PROCESS"))
+                if kind == "IDLE":
+                    segment["color"] = "#30363d"
+                    continue
+                if kind == "CONTEXT_SWITCH":
+                    segment["color"] = "#f7c59f"
+                    continue
+
                 pid = int(segment.get("pid", 0))
                 name = str(segment.get("name", f"P{pid}"))
                 segment["color"] = colors_by_name.get(
@@ -332,6 +411,7 @@ class SimulationClient:
     def _load_commands(self, algorithm: str, commands: list[str]) -> SimulationResult:
         command_lines = [
             self.build_config_command(algorithm, self.processes_for(algorithm)),
+            f"SPEED {self._speed_by_algorithm.get(algorithm, 5)}",
             *commands,
         ]
         result = SimulationResult(
@@ -520,6 +600,7 @@ class SimulationClient:
         gantt_time = sum(
             float(segment.get("duration", 0.0))
             for segment in state.get("gantt", {}).get("segments", [])
+            if segment.get("kind", "PROCESS") == "PROCESS"
         )
 
         def average(attribute: str) -> float:

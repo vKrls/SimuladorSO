@@ -35,7 +35,7 @@ class Footer(QFrame):
 
         layout.addStretch()
         layout.addWidget(self._plain("Política:"))
-        self.algorithm = self._value("--", "#00d4ff", width=210)
+        self.algorithm = self._value("--", "#00d4ff", width=340)
         layout.addWidget(self.algorithm)
 
     def _plain(self, text: str) -> QLabel:

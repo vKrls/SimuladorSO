@@ -53,6 +53,11 @@ class AlgorithmWindow(QWidget):
         header.title.setText(title)
         header.desc.setText(description)
         header.btn_back.clicked.connect(self.go_back)
+        selected_index = header.memory_combo.findData(self.client.memory_algorithm)
+        header.memory_combo.setCurrentIndex(max(0, selected_index))
+        header.memory_combo.currentIndexChanged.connect(
+            self.change_memory_algorithm
+        )
         return header
 
     def _center(self, title: str) -> Center:
@@ -65,6 +70,7 @@ class AlgorithmWindow(QWidget):
         process_input.btn_kill.clicked.connect(self.stop_simulation)
         process_input.btn_clean.clicked.connect(self.clear_processes)
         process_input.slider_speed.valueChanged.connect(self.update_speed_label)
+        process_input.slider_speed.sliderReleased.connect(self.send_speed)
         algorithm_label = {
             "fcfs": "FCFS",
             "sjf_nonpreemptive": "SJF-N",
@@ -83,12 +89,12 @@ class AlgorithmWindow(QWidget):
 
     def _footer(self, footer_text: str) -> Footer:
         footer = Footer()
-        footer.algorithm.setText(footer_text)
+        footer.algorithm.setText(
+            f"{footer_text} | Memoria: {self.client.memory_algorithm_name}"
+        )
         return footer
 
     def add_process(self) -> None:
-        if self._simulation_started:
-            return
         process_data = self.center.process_input.get_process_data()
         _, result = self.client.load_process(self.algorithm, process_data)
         self.center.process_input.clear_name()
@@ -98,8 +104,15 @@ class AlgorithmWindow(QWidget):
         )
         if result.ok:
             self._poll_timer.start()
-            self._refresh_process_views("Proceso cargado en C.")
-            self.header.set_state("CARGADO", "#00d4ff")
+            if self._simulation_started:
+                self._refresh_process_views("Proceso agregado durante la ejecución.")
+                self.header.set_state(
+                    "PAUSA" if self._paused else "C EJECUTANDO",
+                    "#f7c59f" if self._paused else "#7bc67e",
+                )
+            else:
+                self._refresh_process_views("Proceso cargado en C.")
+                self.header.set_state("CARGADO", "#00d4ff")
         else:
             self.header.set_state("ERROR", "#ff4d6d")
 
@@ -186,6 +199,47 @@ class AlgorithmWindow(QWidget):
     def update_speed_label(self, value: int) -> None:
         self.center.process_input.value_speed.setText(f"{value}x")
 
+    def send_speed(self) -> None:
+        speed = self.center.process_input.slider_speed.value()
+        result = self.client.send_speed(self.algorithm, speed)
+        if result.ok and self.client.is_process_running():
+            self.center.execute_tab.append_log(
+                f"Velocidad actualizada: {speed}x",
+                "INFO",
+            )
+
+    def change_memory_algorithm(self, index: int) -> None:
+        memory_algorithm = self.header.memory_combo.itemData(index)
+        if memory_algorithm is None:
+            return
+
+        result = self.client.configure_memory_algorithm(
+            self.algorithm,
+            int(memory_algorithm),
+        )
+        self.footer.algorithm.setText(
+            f"{self.footer_text} | Memoria: {self.client.memory_algorithm_name}"
+        )
+
+        if result.error:
+            self.center.execute_tab.append_log(result.error, "ERR")
+            self.header.set_state("ERROR", "#ff4d6d")
+            return
+
+        if result.payload.get("sent"):
+            self.center.execute_tab.append_log(
+                f"Política de memoria actualizada: "
+                f"{self.client.memory_algorithm_name}. "
+                "Se aplicará a las próximas asignaciones.",
+                "INFO",
+            )
+        else:
+            self.center.execute_tab.append_log(
+                f"Política de memoria seleccionada: "
+                f"{self.client.memory_algorithm_name}.",
+                "INFO",
+            )
+
     def go_back(self) -> None:
         self._poll_timer.stop()
         self.main_window.show_main_menu()
@@ -251,7 +305,7 @@ class AlgorithmWindow(QWidget):
 
     def _set_controls_running(self, running: bool) -> None:
         process_input = self.center.process_input
-        process_input.btn_add.setEnabled(not running)
+        process_input.btn_add.setEnabled(True)
         process_input.btn_random.setEnabled(not running)
         process_input.btn_start.setEnabled(not running)
         process_input.btn_clean.setEnabled(not running)

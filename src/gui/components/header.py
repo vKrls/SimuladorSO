@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton
+from PySide6.QtWidgets import QComboBox, QFrame, QHBoxLayout, QLabel, QPushButton
 
 from gui.components.visual_widgets import GlowLabel
 
@@ -28,13 +28,28 @@ class Header(QFrame):
         layout.addWidget(self.desc)
         layout.addStretch()
 
-        self.total_time = GlowLabel("T: 0.0 u.t.", "#7bc67e", 10)
-        self.total_time.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.total_time)
+        memory_label = QLabel("Memoria:")
+        memory_label.setStyleSheet("color: #8b949e; font-size: 9px;")
+        layout.addWidget(memory_label)
+
+        self.memory_combo = QComboBox()
+        self.memory_combo.addItem("First Fit", 0)
+        self.memory_combo.addItem("Best Fit", 1)
+        self.memory_combo.addItem("Worst Fit", 2)
+        self.memory_combo.setFixedWidth(125)
+        layout.addWidget(self.memory_combo)
 
         sep = QLabel("|")
         sep.setStyleSheet("color: #21262d;")
         layout.addWidget(sep)
+
+        self.total_time = GlowLabel("T: 0.0 u.t.", "#7bc67e", 10)
+        self.total_time.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.total_time)
+
+        state_sep = QLabel("|")
+        state_sep.setStyleSheet("color: #21262d;")
+        layout.addWidget(state_sep)
 
         self.state = QLabel("INACTIVO")
         self.state.setAlignment(Qt.AlignmentFlag.AlignCenter)

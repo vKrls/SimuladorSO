@@ -74,7 +74,7 @@ class GanttWidget(QWidget):
         super().__init__()
         self.segments: list[dict] = []
         self.total_time = 1.0
-        self.setMinimumHeight(96)
+        self.setMinimumHeight(104)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def set_segments(self, segments: list[dict], total_time: float | None = None) -> None:
@@ -98,9 +98,11 @@ class GanttWidget(QWidget):
 
         width = self.width()
         height = self.height()
+        top_label_y = 3
         bar_y = 24
         bar_h = 40
-        label_y = bar_y + bar_h + 8
+        bottom_label_y = bar_y + bar_h + 7
+        time_label_h = 16
 
         painter.fillRect(0, 0, width, height, QColor("#0d1117"))
         painter.setPen(QPen(QColor("#30363d"), 1))
@@ -115,11 +117,13 @@ class GanttWidget(QWidget):
         for seg in self.segments:
             start = float(seg.get("start", 0))
             duration = float(seg.get("duration", 0))
+            limit = float(seg.get("limit", start + duration))
+            kind = str(seg.get("kind", "PROCESS"))
             if duration <= 0:
                 continue
 
             x1 = int((start / self.total_time) * width)
-            x2 = int(((start + duration) / self.total_time) * width)
+            x2 = int((limit / self.total_time) * width)
             block_w = max(x2 - x1, 3)
             color = str(seg.get("color", "#00d4ff"))
 
@@ -131,9 +135,11 @@ class GanttWidget(QWidget):
             painter.setPen(QPen(QColor(color), 1))
             painter.drawRect(x1, bar_y, block_w, bar_h)
 
-            if block_w > 28:
+            min_label_width = 12 if kind == "CONTEXT_SWITCH" else 28
+            if block_w > min_label_width:
                 painter.setPen(QColor("#ffffff"))
-                painter.setFont(QFont("Courier New", 8, QFont.Weight.Bold))
+                font_size = 7 if kind == "CONTEXT_SWITCH" else 8
+                painter.setFont(QFont("Courier New", font_size, QFont.Weight.Bold))
                 painter.drawText(
                     x1 + 2,
                     bar_y,
@@ -143,14 +149,31 @@ class GanttWidget(QWidget):
                     str(seg.get("name", ""))[:8],
                 )
 
-            painter.setPen(QColor("#8b949e"))
-            painter.setFont(QFont("Courier New", 7))
-            painter.drawText(x1, label_y, 46, 16, Qt.AlignmentFlag.AlignLeft, f"{start:.1f}")
+            if kind != "IDLE":
+                painter.setPen(QColor("#8b949e"))
+                painter.setFont(QFont("Courier New", 7))
 
-        end = max(float(seg.get("start", 0)) + float(seg.get("duration", 0)) for seg in self.segments)
-        painter.setPen(QColor("#8b949e"))
-        painter.setFont(QFont("Courier New", 7))
-        painter.drawText(width - 52, label_y, 52, 16, Qt.AlignmentFlag.AlignRight, f"{end:.1f}")
+                # Inicio debajo del extremo izquierdo del segmento.
+                painter.drawLine(x1, bar_y + bar_h, x1, bar_y + bar_h + 4)
+                painter.drawText(
+                    x1 + 2,
+                    bottom_label_y,
+                    max(1, block_w - 4),
+                    time_label_h,
+                    Qt.AlignmentFlag.AlignLeft,
+                    f"{start:.1f}",
+                )
+
+                # Límite encima del extremo derecho del segmento.
+                painter.drawLine(x2, bar_y - 4, x2, bar_y)
+                painter.drawText(
+                    x1 + 2,
+                    top_label_y,
+                    max(1, block_w - 4),
+                    time_label_h,
+                    Qt.AlignmentFlag.AlignRight,
+                    f"{limit:.1f}",
+                )
 
 
 class MemoryMapWidget(QWidget):
