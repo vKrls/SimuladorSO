@@ -130,14 +130,13 @@ struct ErrorData {		/* falta */
 struct Pcb {
 	char name[16];
 	int pid;
+	enum ProcessState state;
 
-	enum ProcessState	state;
 	struct CpuContext	cpu_ctx;
 	struct MemoryData	mem;
 	struct SchedulerData	sched;
 	struct IoData		io;
 	struct ErrorData	err;
-
 	struct Interrupt	interrupt;
 };
 
@@ -189,43 +188,35 @@ struct GanttList {
 };
 
 struct Simulator {
+	/* Control de la simulación */
 	enum SimulatorState state;
+	double current_time;
+	int sim_speed;
+	int next_pid;
+
+	/* Configuración */
 	enum AlgorithmSched alg_sched;
-
+	enum AlgorithmMem alg_memory;
+	double quantum;
+	double switch_cost;
+	
+	/* Cola de procesos */
 	struct Queue created_processes;
-
-	/* Scheduler */
 	struct Queue job_q;
 	struct Queue ready_q;
 	struct Queue io_q;
 	struct Queue finished_q;
-
-	/* Cosas de interrupciones, i/o, etc (zzz) */
-	enum IntType interrupt_q;
-
-	/* Memoria */
-	struct MemoryBlockList memory_list;
-	enum AlgorithmMem alg_memory;
-
-	/* Estado CPU */
+	
+	/* Estado de CPU */
 	struct Pcb *running;
+	struct Pcb *next_pcb;
 	struct CpuContext cpu_ctx;
 	bool cpu_busy;
-
-	struct Pcb *next_pcb;
-
-	/* Diagrama de Gantt */
-	struct GanttList gantt;
-
-	/* Datos de simulación */
-	double current_time;
-
-	double quantum;
-	int switch_cost;	/* muy dificil */
 	
-	int sim_speed;
-
-	int next_pid;
+	/* Otros sistemas */
+	struct MemoryBlockList memory_list;
+	struct GanttList gantt;
+	enum IntType interrupt_q;
 };
 
 /* Log */
@@ -303,7 +294,7 @@ void main_loop(struct Simulator *);
 /* Log */
 void log_config(struct Simulator *s)
 {
-	printf("Configuración aplicada: planificador=%d, memoria=%d, costo=%d, quantum=%.3f.\n",
+	printf("Configuración aplicada: planificador=%d, memoria=%d, costo=%.1f, quantum=%.3f.\n",
 		s->alg_sched, s->alg_memory, s->switch_cost, s->quantum);
 }
 
@@ -1257,10 +1248,10 @@ void create_random_processes(struct Simulator *s)
 {
 	for (int i = 0; i < RANDOM_PROCESS_COUNT; i++) {
 		char name[16];
-		int memory = (1 + rand() % 16) * 64;
-		double burst = 1.0 + rand() % 18;
-		double arrival = rand() % 13;
-		int priority = rand() % 10;
+		int memory = 32 + rand() % 993;		/* 32 - 1024 KB */
+		double burst = 1.0 + rand() % 18;	/* 1 - 18 u.t. */
+		double arrival = rand() % 13;		/* 0 - 12 u.t. */
+		int priority = rand() % 10;		/* 0 - 9 prioridad */
 		struct Pcb *p = malloc(sizeof(struct Pcb));
 
 		if (!p) {
@@ -1373,7 +1364,7 @@ void process_stdin(struct Simulator *s, char *line)
 		int alg_sched, alg_mem, switch_cost;
 		double quantum;
 
-		sscanf(line, "CONFIG %d %d %d %lf", &alg_sched, &alg_mem, &switch_cost, &quantum);
+		sscanf(line, "CONFIG %d %d %lf %lf", &alg_sched, &alg_mem, &quantum, &switch_cost);
 
 		s->alg_sched 	= (enum AlgorithmSched)alg_sched;
 		s->alg_memory 	= (enum AlgorithmMem)alg_mem;

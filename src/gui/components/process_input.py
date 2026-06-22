@@ -49,8 +49,8 @@ class Process_Input(QGroupBox):
         form.addRow("CPU Burst:", self.input_cpu)
 
         self.input_memory = QSpinBox()
-        self.input_memory.setRange(32, 8192)
-        self.input_memory.setSingleStep(32)
+        self.input_memory.setRange(32, 4096)
+        self.input_memory.setSingleStep(1)
         self.input_memory.setValue(128)
         self.input_memory.setSuffix(" KB")
         form.addRow("Memoria:", self.input_memory)
