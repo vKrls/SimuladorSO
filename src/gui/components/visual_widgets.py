@@ -17,8 +17,6 @@ STATE_COLORS = {
     "RUNNING": "#2e7d32",
     "BLOCKED": "#e65100",
     "TERMINATED": "#424242",
-    "ERROR": "#ff4d6d",
-    "PLANNED": "#00d4ff",
 }
 
 STATE_LABELS = {
@@ -27,8 +25,6 @@ STATE_LABELS = {
     "RUNNING": "EJECUTANDO",
     "BLOCKED": "BLOQUEADO",
     "TERMINATED": "TERMINADO",
-    "ERROR": "ERROR",
-    "PLANNED": "PLANIFICADO",
 }
 
 
@@ -177,7 +173,7 @@ class GanttWidget(QWidget):
 
 
 class MemoryMapWidget(QWidget):
-    def __init__(self, total_kb: int = 4096):
+    def __init__(self, total_kb: int = 1024 * 1024):
         super().__init__()
         self.total_kb = total_kb
         self.blocks: list[dict] = []
@@ -230,4 +226,16 @@ class MemoryMapWidget(QWidget):
         painter.setPen(QColor("#8b949e"))
         painter.setFont(QFont("Courier New", 8))
         painter.drawText(0, 4, width, 16, Qt.AlignmentFlag.AlignLeft, "Memoria")
-        painter.drawText(0, bar_y + bar_h + 6, width, 16, Qt.AlignmentFlag.AlignRight, f"Total: {self.total_kb} KB")
+        total_text = (
+            f"{self.total_kb / (1024 * 1024):.1f} GB"
+            if self.total_kb >= 1024 * 1024
+            else f"{self.total_kb / 1024:.0f} MB"
+        )
+        painter.drawText(
+            0,
+            bar_y + bar_h + 6,
+            width,
+            16,
+            Qt.AlignmentFlag.AlignRight,
+            f"Total: {total_text}",
+        )

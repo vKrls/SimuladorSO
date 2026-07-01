@@ -49,10 +49,10 @@ class Process_Input(QGroupBox):
         form.addRow("CPU Burst:", self.input_cpu)
 
         self.input_memory = QSpinBox()
-        self.input_memory.setRange(32, 4096)
-        self.input_memory.setSingleStep(1)
-        self.input_memory.setValue(128)
-        self.input_memory.setSuffix(" KB")
+        self.input_memory.setRange(4, 896)
+        self.input_memory.setSingleStep(4)
+        self.input_memory.setValue(64)
+        self.input_memory.setSuffix(" MB")
         form.addRow("Memoria:", self.input_memory)
 
         self.input_arrival = QDoubleSpinBox()
@@ -125,7 +125,7 @@ class Process_Input(QGroupBox):
         process_data = ProcessData(
             name=self.input_name.text(),
             cpu_burst=self.input_cpu.value(),
-            memory=self.input_memory.value(),
+            memory=self.input_memory.value() * 1024,
             arrival_time=self.input_arrival.value(),
         )
         if self.alg == "rr":

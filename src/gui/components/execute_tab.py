@@ -30,10 +30,12 @@ class Execute_Tab(QTabWidget):
         super().__init__()
         self.metrics: dict[str, QLabel] = {}
         self.counters: dict[str, QLabel] = {}
+        self.device_counters: dict[str, QLabel] = {}
 
         self.addTab(self._build_execution_tab(), "Ejecución")
         self.addTab(self._build_stats_tab(), "Estadísticas")
         self.addTab(self._build_pcb_tab(), "PCB")
+        self.addTab(self._build_system_tab(), "Procesos del SO")
         self.addTab(self._build_log_tab(), "Log")
 
     def _build_execution_tab(self) -> QWidget:
@@ -103,6 +105,23 @@ class Execute_Tab(QTabWidget):
         for index, (label, color) in enumerate(labels):
             queue_layout.addWidget(self._counter_box(label, color), 0, index)
         layout.addWidget(queue_group)
+
+        devices_group = QGroupBox("DISPOSITIVOS DE ENTRADA/SALIDA")
+        devices_layout = QGridLayout(devices_group)
+        devices_layout.setSpacing(6)
+        for index, device in enumerate(
+            ["KEYBOARD", "MOUSE", "DISK", "PRINTER", "NETWORK"]
+        ):
+            value = QLabel(f"{device}: 0")
+            value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            value.setStyleSheet(
+                "color: #48cae4; background: #48cae411; "
+                "border: 1px solid #48cae433; border-radius: 4px; "
+                "padding: 5px; font-size: 9px;"
+            )
+            self.device_counters[device] = value
+            devices_layout.addWidget(value, 0, index)
+        layout.addWidget(devices_group)
         layout.addStretch()
         return widget
 
@@ -138,6 +157,12 @@ class Execute_Tab(QTabWidget):
             ("throughput", "Throughput", "#00d4ff"),
             ("cpu_util", "Utilización CPU", "#ff6b35"),
             ("total_time", "Tiempo Total", "#48cae4"),
+            ("interrupts", "Interrupciones", "#ffd60a"),
+            ("errors", "Errores", "#ff4d6d"),
+            ("swap_outs", "Swap-outs", "#c77dff"),
+            ("swap_ins", "Swap-ins", "#81b29a"),
+            ("context_switches", "Cambios Contexto", "#f4a261"),
+            ("context_switch_time", "Tiempo Contexto", "#e07a5f"),
         ]
         for index, (key, label, color) in enumerate(metrics):
             metrics_layout.addWidget(self._metric_box(key, label, color), index // 3, index % 3)
@@ -180,11 +205,37 @@ class Execute_Tab(QTabWidget):
 
         self.pcb_table = QTableWidget()
         headers = [
-            "PID", "Nombre", "Estado", "PC", "Base", "Límite", "Burst", "Restante",
-            "Llegada", "Inicio", "Fin", "Espera", "TAT", "Resp.", "Interrup.", "Prioridad",
+            "PID", "Nombre", "Estado", "PC", "Puntero bloque", "Base", "Límite",
+            "Memoria", "Residente", "Burst", "Restante", "CPU", "Espera",
+            "Bloqueado", "Fuera de RAM", "Llegada", "Inicio", "Fin", "TAT", "Resp.",
+            "Interrup.", "Planificadas", "Historial interrupciones", "Dispositivo",
+            "I/O restante", "Cambios ctx", "Swaps", "Último swap-out",
+            "Último swap-in", "Error", "Momento error", "Prioridad",
         ]
         self._configure_table(self.pcb_table, headers, stretch=False)
         layout.addWidget(self.pcb_table, 1)
+        return widget
+
+    def _build_system_tab(self) -> QWidget:
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+
+        label = QLabel(
+            "Procesos residentes del sistema operativo simulado "
+            "(PIDs 0–99 y 128 MB reservados)"
+        )
+        label.setStyleSheet("color: #8b949e; font-size: 10px;")
+        layout.addWidget(label)
+
+        self.system_table = QTableWidget()
+        headers = [
+            "PID", "Nombre", "Estado", "Dirección bloque", "Base", "Límite",
+            "Memoria", "Bloques", "Residente",
+        ]
+        self._configure_table(self.system_table, headers, stretch=True)
+        layout.addWidget(self.system_table, 1)
         return widget
 
     def _build_log_tab(self) -> QWidget:
@@ -222,17 +273,40 @@ class Execute_Tab(QTabWidget):
     def set_status(self, text: str) -> None:
         self.status.setText(text)
 
-    def set_processes(self, processes: list[UiProcess]) -> None:
+    def set_processes(
+        self,
+        processes: list[UiProcess],
+        system_processes: list[UiProcess] | None = None,
+    ) -> None:
         self._fill_stats_table(processes)
         self._fill_pcb_table(processes)
+        self.set_system_processes(system_processes or [])
         self._update_counters(processes)
+        self._update_device_counters(processes)
         self._update_cpu_panel(processes, [], None)
+
+    def set_system_processes(self, processes: list[UiProcess]) -> None:
+        self.system_table.setRowCount(len(processes))
+        for row, process in enumerate(processes):
+            values = [
+                process.pid,
+                process.name,
+                STATE_LABELS.get(process.state, process.state),
+                process.memory_block_address,
+                self._memory(process.memory_base),
+                self._memory(process.memory_limit),
+                self._memory(process.memory),
+                process.assigned_blocks,
+                "Sí" if process.resident else "No",
+            ]
+            self._set_row(self.system_table, row, values, process)
 
     def clear(self) -> None:
         self.gantt.clear()
         self.memory_map.clear()
         self.stats_table.setRowCount(0)
         self.pcb_table.setRowCount(0)
+        self.system_table.setRowCount(0)
         self.cpu_process.setText("-- INACTIVO --")
         self.cpu_process.setStyleSheet("color: #484f58; font-size: 11px;")
         self.cpu_progress.setValue(0)
@@ -240,15 +314,24 @@ class Execute_Tab(QTabWidget):
             value.setText("--")
         for value in self.counters.values():
             value.setText("0")
+        for device, value in self.device_counters.items():
+            value.setText(f"{device}: 0")
         self.log_view.clear()
         self.status.setText("Listo")
 
-    def set_bridge_result(self, result: SimulationResult, processes: list[UiProcess] | None = None) -> None:
+    def set_bridge_result(
+        self,
+        result: SimulationResult,
+        processes: list[UiProcess] | None = None,
+        system_processes: list[UiProcess] | None = None,
+    ) -> None:
         self.status.setText("Comandos enviados a C" if result.ok else "No se pudo comunicar con C")
         if processes is not None:
             self._fill_stats_table(processes)
             self._fill_pcb_table(processes)
+            self.set_system_processes(system_processes or [])
             self._update_counters(processes)
+            self._update_device_counters(processes)
             self._update_cpu_panel(processes, [], None)
 
         if result.command_lines:
@@ -302,7 +385,12 @@ class Execute_Tab(QTabWidget):
             event.get("current_time"),
         )
 
-    def set_live_state(self, processes: list[UiProcess], state: dict) -> None:
+    def set_live_state(
+        self,
+        processes: list[UiProcess],
+        system_processes: list[UiProcess],
+        state: dict,
+    ) -> None:
         snapshot = state.get("snapshot", {})
         gantt = state.get("gantt", {})
         memory = state.get("memory_map", {})
@@ -328,7 +416,9 @@ class Execute_Tab(QTabWidget):
         self._fill_metrics(stats)
         self._fill_stats_table(processes)
         self._fill_pcb_table(processes)
+        self.set_system_processes(system_processes)
         self._update_counters(processes)
+        self._update_device_counters(processes)
         self._update_cpu_panel(
             processes,
             gantt.get("segments", []),
@@ -350,6 +440,14 @@ class Execute_Tab(QTabWidget):
                 label.setText(f"{value:.1f}%")
             elif key == "throughput":
                 label.setText(f"{value:.3f}")
+            elif key in {
+                "interrupts",
+                "errors",
+                "swap_outs",
+                "swap_ins",
+                "context_switches",
+            }:
+                label.setText(str(int(value)))
             else:
                 label.setText(f"{value:.2f}")
 
@@ -366,7 +464,7 @@ class Execute_Tab(QTabWidget):
                 self._fmt(process.waiting_time),
                 self._fmt(process.turnaround_time),
                 self._dash(process.response_time),
-                f"{process.memory} KB",
+                self._memory(process.memory),
             ]
             self._set_row(self.stats_table, row, values, process)
 
@@ -378,17 +476,37 @@ class Execute_Tab(QTabWidget):
                 process.name,
                 STATE_LABELS.get(process.state, process.state),
                 f"0x{process.program_counter:X}",
-                f"{process.memory_base} KB",
-                f"{process.memory_limit} KB",
+                process.memory_block_address,
+                self._memory(process.memory_base),
+                self._memory(process.memory_limit),
+                self._memory(process.memory),
+                "Sí" if process.resident else "No",
                 self._fmt(process.burst_time),
                 self._fmt(process.remaining_time or 0),
+                self._fmt(process.cpu_time),
+                self._fmt(process.waiting_time),
+                self._fmt(process.blocked_time),
+                self._fmt(process.nonresident_time),
                 self._fmt(process.arrival_time),
                 self._dash(process.start_time),
                 self._dash(process.finish_time),
-                self._fmt(process.waiting_time),
                 self._fmt(process.turnaround_time),
                 self._dash(process.response_time),
                 process.interrupts,
+                process.planned_interrupts,
+                self._interrupt_history(process),
+                process.io_device,
+                self._fmt(process.io_remaining),
+                process.context_switches,
+                process.swap_count,
+                self._dash(process.last_swap_out),
+                self._dash(process.last_swap_in),
+                (
+                    f"{process.error_code}: {process.error_description}"
+                    if process.error_code
+                    else "--"
+                ),
+                self._dash(process.error_time),
                 process.priority,
             ]
             self._set_row(self.pcb_table, row, values, process)
@@ -414,10 +532,19 @@ class Execute_Tab(QTabWidget):
                 counts["EJECUTANDO"] += 1
             elif process.state == "BLOCKED":
                 counts["BLOQUEADOS"] += 1
-            elif process.state in {"TERMINATED", "ERROR"}:
+            elif process.state == "TERMINATED":
                 counts["TERMINADOS"] += 1
         for key, value in counts.items():
             self.counters[key].setText(str(value))
+
+    def _update_device_counters(self, processes: list[UiProcess]) -> None:
+        counts = {device: 0 for device in self.device_counters}
+        for process in processes:
+            if process.state == "BLOCKED":
+                if process.io_device in counts:
+                    counts[process.io_device] += 1
+        for device, count in counts.items():
+            self.device_counters[device].setText(f"{device}: {count}")
 
     def _update_cpu_panel(
         self,
@@ -490,3 +617,18 @@ class Execute_Tab(QTabWidget):
         if value is None:
             return "--"
         return self._fmt(value)
+
+    def _memory(self, value_kb: int) -> str:
+        if value_kb >= 1024 * 1024:
+            return f"{value_kb / (1024 * 1024):.2f} GB"
+        if value_kb >= 1024:
+            return f"{value_kb / 1024:.1f} MB"
+        return f"{value_kb} KB"
+
+    def _interrupt_history(self, process: UiProcess) -> str:
+        if not process.interrupt_history:
+            return "--"
+        return ", ".join(
+            f"{event.get('type', '?')}@{float(event.get('time', 0.0)):.1f}"
+            for event in process.interrupt_history
+        )

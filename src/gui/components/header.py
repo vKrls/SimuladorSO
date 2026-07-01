@@ -1,7 +1,14 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QComboBox, QFrame, QHBoxLayout, QLabel, QPushButton
+from PySide6.QtWidgets import (
+    QComboBox,
+    QDoubleSpinBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+)
 
 from gui.components.visual_widgets import GlowLabel
 
@@ -10,7 +17,7 @@ class Header(QFrame):
     def __init__(self) -> None:
         super().__init__()
         self.setObjectName("panel")
-        self.setFixedHeight(56)
+        self.setFixedHeight(60)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(14, 0, 14, 0)
@@ -38,6 +45,18 @@ class Header(QFrame):
         self.memory_combo.addItem("Worst Fit", 2)
         self.memory_combo.setFixedWidth(125)
         layout.addWidget(self.memory_combo)
+
+        switch_label = QLabel("Cambio ctx:")
+        switch_label.setStyleSheet("color: #8b949e; font-size: 9px;")
+        layout.addWidget(switch_label)
+
+        self.switch_cost = QDoubleSpinBox()
+        self.switch_cost.setRange(0.0, 20.0)
+        self.switch_cost.setDecimals(1)
+        self.switch_cost.setSingleStep(0.1)
+        self.switch_cost.setSuffix(" u.t.")
+        self.switch_cost.setFixedWidth(94)
+        layout.addWidget(self.switch_cost)
 
         sep = QLabel("|")
         sep.setStyleSheet("color: #21262d;")

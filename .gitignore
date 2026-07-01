@@ -1,11 +1,24 @@
+# Entornos y cachés de Python
 .venv/
 venv/
 env/
 __pycache__/
-*.pyc
-*.pptx
-*.pdf
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
 
-.txt
+# Artefactos de compilación y depuración
+build/
+dist/
+*.dSYM/
+*.o
+*.out
 
+# Archivos del editor y del sistema operativo
+.DS_Store
+**/.DS_Store
+.vscode/
+.idea/
+
+# Documentación local generada para la entrega
 docs/

@@ -81,7 +81,7 @@ class Process_Queue(QGroupBox):
     def _mid_card(self, process: UiProcess) -> QWidget:
         fields = [
             f"Burst: {self._fmt(process.burst_time)}",
-            f"Mem: {process.memory} KB",
+            f"Mem: {process.memory / 1024:.0f} MB",
             f"Rest: {self._fmt(process.remaining_time or 0)}",
             f"PC: 0x{process.program_counter:X}",
         ]
@@ -104,7 +104,7 @@ class Process_Queue(QGroupBox):
             f"Lleg: {self._fmt(process.arrival_time)}",
             f"Inicio: {self._dash(process.start_time)}",
             f"TAT: {self._fmt(process.turnaround_time)}",
-            f"Waste: {process.waste_kb}",
+            f"Swap: {process.swap_count}",
         ]
         if self.alg == "pr":
             fields.append(f"Pr: {process.priority}")

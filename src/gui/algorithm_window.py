@@ -47,6 +47,16 @@ class AlgorithmWindow(QWidget):
         layout.addWidget(self.footer)
         self._sync_summary(self.client.processes_for(self.algorithm))
         self._set_controls_running(False)
+        init_result = self.client.initialize(self.algorithm)
+        self.center.execute_tab.set_bridge_result(
+            init_result,
+            self.client.processes_for(self.algorithm),
+            self.client.system_processes_for(self.algorithm),
+        )
+        if init_result.ok:
+            self._poll_timer.start()
+        else:
+            self.header.set_state("ERROR", "#ff4d6d")
 
     def _header(self, title: str, description: str) -> Header:
         header = Header()
@@ -58,6 +68,8 @@ class AlgorithmWindow(QWidget):
         header.memory_combo.currentIndexChanged.connect(
             self.change_memory_algorithm
         )
+        header.switch_cost.setValue(self.client.switch_cost_for(self.algorithm))
+        header.switch_cost.editingFinished.connect(self.change_switch_cost)
         return header
 
     def _center(self, title: str) -> Center:
@@ -83,7 +95,10 @@ class AlgorithmWindow(QWidget):
 
         processes = self.client.processes_for(self.algorithm)
         center.process_queue.set_processes(processes)
-        center.execute_tab.set_processes(processes)
+        center.execute_tab.set_processes(
+            processes,
+            self.client.system_processes_for(self.algorithm),
+        )
         center.execute_tab.set_status("Crea procesos y envíalos al programa en C.")
         return center
 
@@ -101,6 +116,7 @@ class AlgorithmWindow(QWidget):
         self.center.execute_tab.set_bridge_result(
             result,
             self.client.processes_for(self.algorithm),
+            self.client.system_processes_for(self.algorithm),
         )
         if result.ok:
             self._poll_timer.start()
@@ -128,6 +144,7 @@ class AlgorithmWindow(QWidget):
         self.center.execute_tab.set_bridge_result(
             result,
             self.client.processes_for(self.algorithm),
+            self.client.system_processes_for(self.algorithm),
         )
         if result.ok:
             self._poll_timer.start()
@@ -144,7 +161,11 @@ class AlgorithmWindow(QWidget):
             return
 
         result = self.client.run(self.algorithm)
-        self.center.execute_tab.set_bridge_result(result, processes)
+        self.center.execute_tab.set_bridge_result(
+            result,
+            processes,
+            self.client.system_processes_for(self.algorithm),
+        )
         self.center.process_queue.set_processes(processes)
         self._sync_summary(processes)
 
@@ -171,13 +192,21 @@ class AlgorithmWindow(QWidget):
                 self._paused = True
                 self.center.process_input.btn_stop.setText("Continuar")
                 self.header.set_state("PAUSA", "#f7c59f")
-        self.center.execute_tab.set_bridge_result(result, self.client.processes_for(self.algorithm))
+        self.center.execute_tab.set_bridge_result(
+            result,
+            self.client.processes_for(self.algorithm),
+            self.client.system_processes_for(self.algorithm),
+        )
 
     def stop_simulation(self) -> None:
         result = self.client.stop()
         self._poll_c_output()
         self._poll_timer.stop()
-        self.center.execute_tab.set_bridge_result(result, self.client.processes_for(self.algorithm))
+        self.center.execute_tab.set_bridge_result(
+            result,
+            self.client.processes_for(self.algorithm),
+            self.client.system_processes_for(self.algorithm),
+        )
         self._paused = False
         self._simulation_started = False
         self.center.process_input.btn_stop.setText("Pausar")
@@ -191,6 +220,9 @@ class AlgorithmWindow(QWidget):
         self.client.clear_processes(self.algorithm)
         self.center.process_queue.clear()
         self.center.execute_tab.clear()
+        self.center.execute_tab.set_system_processes(
+            self.client.system_processes_for(self.algorithm)
+        )
         self.center.execute_tab.set_status("Interfaz limpia.")
         self.header.total_time.setText("T: 0.0 u.t.")
         self.header.set_state("INACTIVO", "#484f58")
@@ -240,6 +272,18 @@ class AlgorithmWindow(QWidget):
                 "INFO",
             )
 
+    def change_switch_cost(self) -> None:
+        cost = self.header.switch_cost.value()
+        result = self.client.configure_switch_cost(self.algorithm, cost)
+        if result.error:
+            self.center.execute_tab.append_log(result.error, "ERR")
+            self.header.set_state("ERROR", "#ff4d6d")
+            return
+        self.center.execute_tab.append_log(
+            f"Costo de cambio de contexto: {cost:.1f} u.t.",
+            "INFO",
+        )
+
     def go_back(self) -> None:
         self._poll_timer.stop()
         self.main_window.show_main_menu()
@@ -256,8 +300,13 @@ class AlgorithmWindow(QWidget):
         if events:
             state = self.client.apply_events(self.algorithm, events)
             processes = self.client.processes_for(self.algorithm)
+            system_processes = self.client.system_processes_for(self.algorithm)
             self.center.process_queue.set_processes(processes)
-            self.center.execute_tab.set_live_state(processes, state)
+            self.center.execute_tab.set_live_state(
+                processes,
+                system_processes,
+                state,
+            )
             self._sync_summary(processes, state)
 
             if not self._simulation_started:
@@ -277,7 +326,10 @@ class AlgorithmWindow(QWidget):
     def _refresh_process_views(self, status: str) -> None:
         processes = self.client.processes_for(self.algorithm)
         self.center.process_queue.set_processes(processes)
-        self.center.execute_tab.set_processes(processes)
+        self.center.execute_tab.set_processes(
+            processes,
+            self.client.system_processes_for(self.algorithm),
+        )
         self.center.execute_tab.set_status(status)
         self._sync_summary(processes)
 
@@ -289,18 +341,18 @@ class AlgorithmWindow(QWidget):
         total = len(processes) + self.client.random_process_count_for(self.algorithm)
         finished = sum(
             1 for process in processes
-            if process.state in {"TERMINATED", "ERROR"}
+            if process.state == "TERMINATED"
         )
         state = state or self.client.latest_state(self.algorithm)
         snapshot = state.get("snapshot", {})
         memory = state.get("memory_map", {})
-        free_memory = int(memory.get("free_kb", 4096))
+        free_memory = int(memory.get("free_kb", 1024 * 1024))
         current_time = float(snapshot.get("current_time", 0.0))
 
         self.header.total_time.setText(f"T: {current_time:.1f} u.t.")
         self.footer.process.setText(str(total))
         self.footer.finished.setText(str(finished))
-        self.footer.memory.setText(f"{free_memory} KB")
+        self.footer.memory.setText(f"{free_memory / 1024:.0f} MB")
         self.footer.cpu.setText("C" if self.client.is_process_running() else "--")
 
     def _set_controls_running(self, running: bool) -> None:

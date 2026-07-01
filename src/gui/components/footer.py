@@ -30,7 +30,7 @@ class Footer(QFrame):
 
         layout.addWidget(self._sep())
         layout.addWidget(self._plain("Memoria libre:"))
-        self.memory = self._value("4096 KB", "#c77dff", width=90)
+        self.memory = self._value("1024 MB", "#c77dff", width=90)
         layout.addWidget(self.memory)
 
         layout.addStretch()
