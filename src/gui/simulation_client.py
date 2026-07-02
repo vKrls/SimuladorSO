@@ -9,6 +9,7 @@ import threading
 from typing import Any
 
 RANDOM_PROCESS_COUNT = 5
+DEMO_PROCESS_COUNT = 20
 TOTAL_MEMORY_KB = 1024 * 1024
 RESERVED_PID_COUNT = 100
 PROCESS_COLORS = [
@@ -122,6 +123,7 @@ class SimulationClient:
         self._processes_by_algorithm: dict[str, list[UiProcess]] = {}
         self._system_processes_by_algorithm: dict[str, list[UiProcess]] = {}
         self._random_requests_by_algorithm: dict[str, int] = {}
+        self._demo_requests_by_algorithm: dict[str, int] = {}
         self._random_quantum_by_algorithm: dict[str, float] = {}
         self._speed_by_algorithm: dict[str, int] = {}
         self._switch_cost_by_algorithm: dict[str, float] = {}
@@ -225,6 +227,7 @@ class SimulationClient:
         self._processes_by_algorithm[algorithm] = []
         self._next_pid_by_algorithm[algorithm] = RESERVED_PID_COUNT
         self._random_requests_by_algorithm[algorithm] = 0
+        self._demo_requests_by_algorithm[algorithm] = 0
         self._random_quantum_by_algorithm.pop(algorithm, None)
         self._speed_by_algorithm.pop(algorithm, None)
         self._state_by_algorithm.pop(algorithm, None)
@@ -262,12 +265,26 @@ class SimulationClient:
             self._random_quantum_by_algorithm[algorithm] = quantum
         return self._load_commands(algorithm, ["RANDOM"])
 
+    def request_demo_processes(self, algorithm: str) -> SimulationResult:
+        self._demo_requests_by_algorithm[algorithm] = (
+            self._demo_requests_by_algorithm.get(algorithm, 0) + 1
+        )
+        return self._load_commands(algorithm, ["DEMO"])
+
     def random_process_count_for(self, algorithm: str) -> int:
         requests = self._random_requests_by_algorithm.get(algorithm, 0)
         return requests * RANDOM_PROCESS_COUNT
 
+    def demo_process_count_for(self, algorithm: str) -> int:
+        requests = self._demo_requests_by_algorithm.get(algorithm, 0)
+        return requests * DEMO_PROCESS_COUNT
+
     def has_processes_for(self, algorithm: str) -> bool:
-        return bool(self.processes_for(algorithm) or self.random_process_count_for(algorithm))
+        return bool(
+            self.processes_for(algorithm)
+            or self.random_process_count_for(algorithm)
+            or self.demo_process_count_for(algorithm)
+        )
 
     def build_payload(self, algorithm: str) -> dict[str, Any]:
         return {
@@ -275,6 +292,7 @@ class SimulationClient:
             "memory_algorithm": self.memory_algorithm_name,
             "processes": [process.to_payload() for process in self.processes_for(algorithm)],
             "random_requests": self._random_requests_by_algorithm.get(algorithm, 0),
+            "demo_requests": self._demo_requests_by_algorithm.get(algorithm, 0),
         }
 
     def build_c_commands(self, algorithm: str) -> list[str]:
@@ -504,6 +522,7 @@ class SimulationClient:
             for event in events
         ):
             self._random_requests_by_algorithm[algorithm] = 0
+            self._demo_requests_by_algorithm[algorithm] = 0
         return state
 
     def latest_state(self, algorithm: str) -> dict[str, Any]:

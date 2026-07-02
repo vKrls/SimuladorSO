@@ -70,6 +70,7 @@ class AlgorithmWindow(QWidget):
         )
         header.switch_cost.setValue(self.client.switch_cost_for(self.algorithm))
         header.switch_cost.editingFinished.connect(self.change_switch_cost)
+        header.btn_demo.clicked.connect(self.load_demo_processes)
         return header
 
     def _center(self, title: str) -> Center:
@@ -149,6 +150,23 @@ class AlgorithmWindow(QWidget):
         if result.ok:
             self._poll_timer.start()
             self.center.execute_tab.set_status("Cargando 5 procesos aleatorios desde C...")
+            self.header.set_state("CARGANDO", "#00d4ff")
+        else:
+            self.header.set_state("ERROR", "#ff4d6d")
+
+    def load_demo_processes(self) -> None:
+        if self._simulation_started:
+            return
+
+        result = self.client.request_demo_processes(self.algorithm)
+        self.center.execute_tab.set_bridge_result(
+            result,
+            self.client.processes_for(self.algorithm),
+            self.client.system_processes_for(self.algorithm),
+        )
+        if result.ok:
+            self._poll_timer.start()
+            self.center.execute_tab.set_status("Cargando 20 procesos demo desde C...")
             self.header.set_state("CARGANDO", "#00d4ff")
         else:
             self.header.set_state("ERROR", "#ff4d6d")
@@ -338,7 +356,11 @@ class AlgorithmWindow(QWidget):
         processes: list[UiProcess],
         state: dict | None = None,
     ) -> None:
-        total = len(processes) + self.client.random_process_count_for(self.algorithm)
+        total = (
+            len(processes)
+            + self.client.random_process_count_for(self.algorithm)
+            + self.client.demo_process_count_for(self.algorithm)
+        )
         finished = sum(
             1 for process in processes
             if process.state == "TERMINATED"
@@ -363,3 +385,4 @@ class AlgorithmWindow(QWidget):
         process_input.btn_clean.setEnabled(not running)
         process_input.btn_stop.setEnabled(running)
         process_input.btn_kill.setEnabled(running)
+        self.header.btn_demo.setEnabled(not running)

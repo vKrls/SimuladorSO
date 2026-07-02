@@ -110,6 +110,13 @@ void process_stdin(struct Simulator *s, char *line)
 		return;
 	}
 
+	if (strncmp(line, "DEMO", 4) == 0) {
+		demo(s);
+		log_event(s, "SIMULATOR", "20 procesos de prueba cargados.");
+		send_data(s, true);
+		return;
+	}
+
 	log_event(s, "ERROR", "Comando desconocido: %s", line);
 }
 

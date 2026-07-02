@@ -280,6 +280,7 @@ void memory_free_all(struct MemoryBlockList *m);
 struct Pcb create_user_pcb(struct Simulator *s, const char *name, int mem_kb,
 			   double burst, double arrival, int priority);
 void create_random_processes(struct Simulator *s);
+void demo(struct Simulator *s);
 void create_system_processes(struct Simulator *s);
 void finish_process(struct Simulator *s, struct Pcb *p, bool failed);
 void terminate_running_process(struct Simulator *s);

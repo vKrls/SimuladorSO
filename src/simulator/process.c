@@ -75,9 +75,7 @@ struct Pcb create_user_pcb(struct Simulator *s, const char *name, int mem_kb,
 
 void create_random_processes(struct Simulator *s)
 {
-	int i;
-
-	for (i = 0; i < RANDOM_PROCESS_COUNT; i++) {
+	for (int i = 0; i < RANDOM_PROCESS_COUNT; i++) {
 		struct Pcb *p = malloc(sizeof(*p));
 		char name[16];
 		int memory = (24 + rand() % 169) * 1024;
@@ -100,7 +98,90 @@ void create_random_processes(struct Simulator *s)
 
 void demo(struct Simulator *s)
 {
-	
+	static const struct {
+		const char *name;
+		int memory_kb;
+		double burst;
+		double arrival;
+		int priority;
+		bool has_io;
+		double io_start;
+		double io_duration;
+		enum IoDevice device;
+	} demos[] = {
+	/*	 Name,  Memory,     Burst, Arrival, Priority, Has_io, Io_start, Io_duration, Device */
+		{"D00", 32  * 1024, 8.0,   0.0,     2,        true,   2.0,      1.5,         IO_DISK},
+		{"D01", 48  * 1024, 12.0,  0.0,     4,        false,  0.0,      0.0,         IO_NONE},
+		{"D02", 24  * 1024, 5.0,   1.0,     1,        true,   1.5,      0.8,         IO_KEYBOARD},
+		{"D03", 96  * 1024, 18.0,  1.0,     7,        true,   6.0,      2.5,         IO_NETWORK},
+		{"D04", 64  * 1024, 10.0,  2.0,     3,        false,  0.0,      0.0,         IO_NONE},
+		{"D05", 40  * 1024, 7.0,   2.0,     5,        true,   2.5,      1.2,         IO_PRINTER},
+		{"D06", 128 * 1024, 22.0,  3.0,     8,        true,   8.0,      3.0,         IO_DISK},
+		{"D07", 56  * 1024, 9.0,   3.0,     0,        false,  0.0,      0.0,         IO_NONE},
+		{"D08", 72  * 1024, 14.0,  4.0,     6,        true,   5.0,      1.7,         IO_MOUSE},
+		{"D09", 28  * 1024, 6.0,   4.0,     2,        false,  0.0,      0.0,         IO_NONE},
+		{"D10", 144 * 1024, 25.0,  5.0,     9,        true,   10.0,     3.5,         IO_NETWORK},
+		{"D11", 36  * 1024, 8.0,   5.0,     4,        true,   3.0,      1.0,         IO_KEYBOARD},
+		{"D12", 88  * 1024, 16.0,  6.0,     5,        false,  0.0,      0.0,         IO_NONE},
+		{"D13", 52  * 1024, 11.0,  6.0,     1,        true,   4.0,      2.0,         IO_DISK},
+		{"D14", 112 * 1024, 20.0,  7.0,     7,        true,   7.0,      2.8,         IO_PRINTER},
+		{"D15", 44  * 1024, 7.0,   7.0,     3,        false,  0.0,      0.0,         IO_NONE},
+		{"D16", 76  * 1024, 13.0,  8.0,     6,        true,   5.5,      1.4,         IO_MOUSE},
+		{"D17", 60  * 1024, 10.0,  8.0,     2,        true,   3.5,      1.9,         IO_NETWORK},
+		{"D18", 104 * 1024, 19.0,  9.0,     8,        false,  0.0,      0.0,         IO_NONE},
+		{"D19", 30  * 1024, 6.0,   9.0,     0,        true,   2.0,      0.9,         IO_DISK},
+	};
+
+	for (int i = 0; i < 20; i++) {
+		struct Pcb *p = malloc(sizeof(*p));
+
+		if (p == NULL) {
+			fprintf(stderr, "OOM al crear proceso demo.\n");
+			return;
+		}
+
+		*p = pcb_defaults();
+
+		snprintf(p->name, sizeof(p->name), "%s", demos[i].name);
+		p->pid = s->next_pid++;
+		p->state = NEW;
+		
+		p->mem.required_kb = demos[i].memory_kb;
+		
+		p->sched.arrival_time = demos[i].arrival;
+		p->sched.burst_time = demos[i].burst;
+		p->sched.remaining_time = demos[i].burst;
+		p->sched.priority = demos[i].priority;
+		p->sched.remaining_quantum = s->quantum;
+		
+		p->cpu_ctx.stack_pointer = 0x1000 + p->pid * 16;
+		
+		p->io.has_io = demos[i].has_io;
+		p->io.start_time = demos[i].io_start;
+		if (p->io.has_io) {
+			p->io.duration = demos[i].io_duration;
+			p->io.remaining_time = demos[i].io_duration;
+			p->io.device = demos[i].device;
+		}
+		
+		p->interrupt.periodic_target = 2 + i % 5;
+		p->interrupt.next_cpu_time =
+			p->sched.burst_time / (p->interrupt.periodic_target + 1.0);
+		
+		if (i == 4) {
+			p->err.planned = true;
+			p->err.planned_type = INT_EXC_DIV_ZERO;
+			p->err.trigger_cpu_time = p->sched.burst_time * 0.40;
+		}
+		
+		s->user_process_count++;
+
+		enqueue(&s->created_processes, p);
+		
+		log_event(s, "PROCESS", "%s(%d) demo creado: memoria=%d MB, burst=%.1f.",
+			  p->name, p->pid, p->mem.required_kb / 1024,
+			  p->sched.burst_time);
+	}
 }
 
 void create_system_processes(struct Simulator *s)
@@ -116,14 +197,13 @@ void create_system_processes(struct Simulator *s)
 		(8 * 1024) / BLOCK_SIZE_KB,
 	};
 	int assigned = (108 * 1024) / BLOCK_SIZE_KB;
-	int i;
 
 	while (assigned < OS_RESERVED_KB / BLOCK_SIZE_KB) {
 		blocks[rand() % OS_PROCESS_COUNT]++;
 		assigned++;
 	}
 
-	for (i = 0; i < OS_PROCESS_COUNT; i++) {
+	for (int i = 0; i < OS_PROCESS_COUNT; i++) {
 		struct Pcb *p = malloc(sizeof(*p));
 		if (p == NULL) {
 			fprintf(stderr, "OOM al crear procesos del SO.\n");

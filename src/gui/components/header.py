@@ -58,6 +58,11 @@ class Header(QFrame):
         self.switch_cost.setFixedWidth(94)
         layout.addWidget(self.switch_cost)
 
+        self.btn_demo = QPushButton("Demo")
+        self.btn_demo.setObjectName("primaryButton")
+        self.btn_demo.setFixedWidth(68)
+        layout.addWidget(self.btn_demo)
+
         sep = QLabel("|")
         sep.setStyleSheet("color: #21262d;")
         layout.addWidget(sep)
