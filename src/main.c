@@ -89,13 +89,12 @@ struct CpuContext {
 };
 
 struct SchedulerData {
-	double arrival_time;
-	double burst_time;
-	double remaining_time;
-	double start_time;
-	double finish_time;
-	double waiting_time;
-	double turnaround_time;
+	double arrival_time;		/* Tiempo en que ingresa al sistema */
+	double burst_time;		/* Constante */
+	double remaining_time;		/* Burst restante */
+	double start_time;		/* Primera vez que entra a running */
+	double finish_time;		/* Se acaba el burst */
+	double turnaround_time;		/*  */
 	double response_time;
 	double ready_time;
 	double blocked_time;
@@ -112,7 +111,7 @@ struct MemoryData {
 	int waste_kb;
 	int start;
 	int limit;
-	struct MemoryBlock *block;
+	struct MemoryBlock *block;	/* Direccion de memoria */
 };
 
 struct IoData {
@@ -854,7 +853,6 @@ void finish_process(struct Simulator *s, struct Pcb *p, bool failed)
 	p->sched.finish_time = s->current_time;
 	p->sched.turnaround_time =
 		p->sched.finish_time - p->sched.arrival_time;
-	p->sched.waiting_time = p->sched.ready_time;
 	set_process_state(s, p, TERMINATED,
 			  failed ? "terminado por excepción fatal"
 				 : "ráfaga de CPU completada");
@@ -1447,6 +1445,10 @@ void send_json_string(const char *text)
 	putchar('"');
 }
 
+/*
+ * "texto escapado"
+ */
+
 static void send_interrupts(struct Pcb *p)
 {
 	int i;
@@ -1475,6 +1477,29 @@ static void send_interrupts(struct Pcb *p)
 	printf("]}");
 }
 
+/*
+ * "interrupts": {
+ *   "planned": 0,
+ *   "periodic_completed": 0,
+ *   "total": 0,
+ *   "by_type": {
+ *     "HW_IO": 0,
+ *     "HW_TIMER": 0,
+ *     "SW_SYSCALL": 0,
+ *     "EXC_DIV_ZERO": 0,
+ *     "EXC_MEMORY": 0
+ *   },
+ *   "history": [
+ *     {
+ *       "type": "HW_IO",
+ *       "time": 0.000,
+ *       "device": "DISK",
+ *       "fatal": false
+ *     }
+ *   ]
+ * }
+ */
+
 static void send_pcb(struct Pcb *p)
 {
 	printf("{\"pid\":%d,\"name\":", p->pid);
@@ -1486,8 +1511,7 @@ static void send_pcb(struct Pcb *p)
 	       "\"cpu\":{\"program_counter\":%d,\"stack_pointer\":%d},"
 	       "\"scheduler\":{\"arrival_time\":%.3f,\"burst_time\":%.3f,"
 	       "\"remaining_time\":%.3f,\"start_time\":%.3f,\"finish_time\":%.3f,"
-	       "\"waiting_time\":%.3f,\"turnaround_time\":%.3f,"
-	       "\"response_time\":%.3f,\"ready_time\":%.3f,"
+	       "\"turnaround_time\":%.3f,\"response_time\":%.3f,\"ready_time\":%.3f,"
 	       "\"blocked_time\":%.3f,\"nonresident_time\":%.3f,"
 	       "\"cpu_time\":%.3f,\"priority\":%d,\"remaining_quantum\":%.3f,"
 	       "\"context_switches\":%d},"
@@ -1502,8 +1526,7 @@ static void send_pcb(struct Pcb *p)
 	       p->cpu_ctx.program_counter, p->cpu_ctx.stack_pointer,
 	       p->sched.arrival_time, p->sched.burst_time,
 	       p->sched.remaining_time, p->sched.start_time,
-	       p->sched.finish_time, p->sched.waiting_time,
-	       p->sched.turnaround_time, p->sched.response_time,
+	       p->sched.finish_time, p->sched.turnaround_time, p->sched.response_time,
 	       p->sched.ready_time, p->sched.blocked_time,
 	       p->sched.nonresident_time, p->sched.cpu_time,
 	       p->sched.priority, p->sched.remaining_quantum,
@@ -1528,6 +1551,71 @@ static void send_pcb(struct Pcb *p)
 	printf("}}");
 }
 
+/*
+ * {
+ *   "pid": 0,
+ *   "name": "P0",
+ *   "state": "READY",
+ *   "is_system": false,
+ *   "resident": true,
+ *   "swap_count": 0,
+ *   "last_swap_out": -1.000,
+ *   "last_swap_in": -1.000,
+ *   "cpu": {
+ *     "program_counter": 0,
+ *     "stack_pointer": 0
+ *   },
+ *   "scheduler": {
+ *     "arrival_time": 0.000,
+ *     "burst_time": 0.000,
+ *     "remaining_time": 0.000,
+ *     "start_time": -1.000,
+ *     "finish_time": -1.000,
+ *     "turnaround_time": 0.000,
+ *     "response_time": 0.000,
+ *     "ready_time": 0.000,
+ *     "blocked_time": 0.000,
+ *     "nonresident_time": 0.000,
+ *     "cpu_time": 0.000,
+ *     "priority": 0,
+ *     "remaining_quantum": 0.000,
+ *     "context_switches": 0
+ *   },
+ *   "memory": {
+ *     "required_kb": 0,
+ *     "assigned_blocks": 0,
+ *     "waste_kb": 0,
+ *     "start_block": -1,
+ *     "limit_block": -1,
+ *     "block_address": "0x0"
+ *   },
+ *   "io": {
+ *     "has_io": false,
+ *     "started": false,
+ *     "completed": false,
+ *     "start_time": 0.000,
+ *     "duration": -1.000,
+ *     "remaining_time": -1.000,
+ *     "device": "NONE"
+ *   },
+ *   "interrupts": {
+ *     "planned": 0,
+ *     "periodic_completed": 0,
+ *     "total": 0,
+ *     "by_type": {},
+ *     "history": []
+ *   },
+ *   "error": {
+ *     "planned": false,
+ *     "has_error": false,
+ *     "fatal": false,
+ *     "occurred_at": -1.000,
+ *     "code": "",
+ *     "description": ""
+ *   }
+ * }
+ */
+
 static void send_queue_processes(struct Queue *q, bool *first)
 {
 	struct Node *node;
@@ -1538,6 +1626,12 @@ static void send_queue_processes(struct Queue *q, bool *first)
 		*first = false;
 	}
 }
+
+/*
+ * Fragmento insertado dentro de un arreglo ya abierto:
+ * { "pid": 0, "...": "campos de send_pcb" },
+ * { "pid": 1, "...": "campos de send_pcb" }
+ */
 
 static void send_all_processes(struct Simulator *s)
 {
@@ -1567,6 +1661,13 @@ static void send_all_processes(struct Simulator *s)
 	putchar(']');
 }
 
+/*
+ * [
+ *   { "pid": 0, "...": "campos de send_pcb" },
+ *   { "pid": 1, "...": "campos de send_pcb" }
+ * ]
+ */
+
 static void send_pid_queue(struct Queue *q)
 {
 	struct Node *node;
@@ -1581,6 +1682,10 @@ static void send_pid_queue(struct Queue *q)
 	}
 	putchar(']');
 }
+
+/*
+ * [0, 1, 2]
+ */
 
 static void send_queues(struct Simulator *s)
 {
@@ -1606,6 +1711,23 @@ static void send_queues(struct Simulator *s)
 	}
 	printf("}}");
 }
+
+/*
+ * "queues": {
+ *   "created": [0],
+ *   "job": [1],
+ *   "ready": [2],
+ *   "nonresident": [3],
+ *   "finished": [4],
+ *   "devices": {
+ *     "KEYBOARD": [],
+ *     "MOUSE": [],
+ *     "DISK": [],
+ *     "PRINTER": [],
+ *     "NETWORK": []
+ *   }
+ * }
+ */
 
 static void send_memory(struct Simulator *s)
 {
@@ -1635,6 +1757,25 @@ static void send_memory(struct Simulator *s)
 	printf("]}");
 }
 
+/*
+ * "memory": {
+ *   "total_kb": 0,
+ *   "block_size_kb": 0,
+ *   "free_kb": 0,
+ *   "os_reserved_kb": 0,
+ *   "blocks": [
+ *     {
+ *       "start_block": 0,
+ *       "limit_block": 0,
+ *       "length_blocks": 0,
+ *       "owner_pid": null,
+ *       "owner_name": "Libre",
+ *       "is_system": false
+ *     }
+ *   ]
+ * }
+ */
+
 static void send_gantt(struct Simulator *s)
 {
 	struct GanttNode *node;
@@ -1655,7 +1796,23 @@ static void send_gantt(struct Simulator *s)
 	printf("]}");
 }
 
-static void send_stats(struct Simulator *s)
+/*
+ * "gantt": {
+ *   "current_time": 0.000,
+ *   "segments": [
+ *     {
+ *       "pid": 0,
+ *       "name": "P0",
+ *       "kind": "PROCESS",
+ *       "start": 0.000,
+ *       "limit": 0.000,
+ *       "duration": 0.000
+ *     }
+ *   ]
+ * }
+ */
+
+static void send_stats(struct Simulator *s)	/* Promedio */
 {
 	struct Node *node;
 	double waiting = 0.0;
@@ -1665,7 +1822,7 @@ static void send_stats(struct Simulator *s)
 
 	for (node = s->finished_q.head; node != NULL; node = node->next) {
 		struct Pcb *p = node->pcb;
-		waiting += p->sched.waiting_time;
+		waiting += p->sched.ready_time;
 		turnaround += p->sched.turnaround_time;
 		response += p->sched.response_time;
 		measured++;
@@ -1686,6 +1843,24 @@ static void send_stats(struct Simulator *s)
 	       s->interrupt_count, s->swap_out_count, s->swap_in_count,
 	       s->context_switch_count, s->context_switch_time);
 }
+
+/*
+ * "stats": {
+ *   "avg_waiting": 0.000,
+ *   "avg_turnaround": 0.000,
+ *   "avg_response": 0.000,
+ *   "throughput": 0.000000,
+ *   "cpu_util": 0.000,
+ *   "total_time": 0.000,
+ *   "completed": 0,
+ *   "errors": 0,
+ *   "interrupts": 0,
+ *   "swap_outs": 0,
+ *   "swap_ins": 0,
+ *   "context_switches": 0,
+ *   "context_switch_time": 0.000
+ * }
+ */
 
 void send_data(struct Simulator *s, bool force)
 {
@@ -1731,6 +1906,42 @@ void send_data(struct Simulator *s, bool force)
 	printf("}\n");
 	fflush(stdout);
 }
+
+/*
+ * SIM_DATA {
+ *   "type": "state",
+ *   "sequence": 0,
+ *   "current_time": 0.000,
+ *   "simulator_state": 0,
+ *   "cpu_busy": false,
+ *   "running_pid": null,
+ *   "dispatching_pid": null,
+ *   "config": {
+ *     "scheduler_algorithm": 0,
+ *     "scheduler_name": "FCFS",
+ *     "memory_algorithm": 0,
+ *     "memory_name": "First Fit",
+ *     "quantum": 0.000,
+ *     "switch_cost": 0.000,
+ *     "snapshot_interval_ms": 0
+ *   },
+ *   "processes": [
+ *     { "pid": 0, "...": "campos de send_pcb" }
+ *   ],
+ *   "queues": {
+ *     "...": "campos de send_queues"
+ *   },
+ *   "memory": {
+ *     "...": "campos de send_memory"
+ *   },
+ *   "gantt": {
+ *     "...": "campos de send_gantt"
+ *   },
+ *   "stats": {
+ *     "...": "campos de send_stats"
+ *   }
+ * }
+ */
 
 static bool valid_config(int sched, int memory, double quantum, double cost)
 {
@@ -1871,8 +2082,6 @@ static struct Simulator simulator_init(void)
 
 static void simulator_free(struct Simulator *s)
 {
-	int i;
-
 	if (s->running != NULL)
 		free(s->running);
 	if (s->next_pcb != NULL)
@@ -1881,12 +2090,18 @@ static void simulator_free(struct Simulator *s)
 	q_free(&s->created_processes);
 	q_free(&s->job_q);
 	q_free(&s->ready_q);
-	for (i = 0; i < IO_DEVICE_COUNT; i++)
+	for (int i = 0; i < IO_DEVICE_COUNT; i++)
 		q_free(&s->device_q[i]);
 	q_free(&s->nonresident_q);
 	q_free(&s->finished_q);
+	
 	memory_free_all(&s->memory_list);
 	gantt_free(&s->gantt);
+}
+
+static void demo(struct Simulator *s)
+{
+	
 }
 
 int main(void)
