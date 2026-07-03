@@ -183,6 +183,7 @@ class SimulationService:
             "algorithm": algorithm,
             "memory_algorithm": self.memory_algorithm_name,
             "quantum": self.quantum_for(algorithm),
+            "speed": self.store.speed_for(algorithm),
             "processes": [
                 process.to_payload()
                 for process in self.processes_for(algorithm)
@@ -194,7 +195,6 @@ class SimulationService:
         processes = self.processes_for(algorithm)
         return [
             self.build_config_command(algorithm, processes),
-            self.commands.speed(self.store.speed_for(algorithm)),
             *[self.commands.add_process(process) for process in processes],
             "RUN",
         ]
@@ -202,7 +202,6 @@ class SimulationService:
     def initialize(self, algorithm: str) -> SimulationResult:
         command_lines = [
             self.build_config_command(algorithm, self.processes_for(algorithm)),
-            self.commands.speed(self.store.speed_for(algorithm)),
         ]
         result = SimulationResult(
             payload=self.build_payload(algorithm),
@@ -219,6 +218,7 @@ class SimulationService:
             self.memory_algorithm,
             quantum,
             self.switch_cost_for(algorithm),
+            self.store.speed_for(algorithm),
         )
 
     def run(self, algorithm: str, *, apply_events: bool = True) -> SimulationResult:
@@ -227,7 +227,6 @@ class SimulationService:
             processes = self.processes_for(algorithm)
             command_lines = [
                 self.build_config_command(algorithm, processes),
-                self.commands.speed(self.store.speed_for(algorithm)),
                 "RUN",
             ]
         else:
@@ -247,7 +246,7 @@ class SimulationService:
 
     def send_speed(self, algorithm: str, speed: int) -> SimulationResult:
         self.store.set_speed(algorithm, speed)
-        command = self.commands.speed(speed)
+        command = self.build_config_command(algorithm, self.processes_for(algorithm))
         if not self.is_process_running() or self._active_algorithm != algorithm:
             return SimulationResult(payload={}, command_lines=[command])
         return self._send_control(command)
@@ -313,7 +312,6 @@ class SimulationService:
     ) -> SimulationResult:
         command_lines = [
             self.build_config_command(algorithm, self.processes_for(algorithm)),
-            self.commands.speed(self.store.speed_for(algorithm)),
             *commands,
         ]
         result = SimulationResult(

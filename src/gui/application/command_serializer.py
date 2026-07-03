@@ -19,15 +19,13 @@ class SimulatorCommandSerializer:
         memory_algorithm: int,
         quantum: float,
         switch_cost: float,
+        speed: int,
     ) -> str:
         sched_alg = SCHEDULER_ALGORITHMS.get(algorithm, 0)
         return (
-            f"CONFIG {sched_alg} {memory_algorithm} "
-            f"{quantum:.3f} {switch_cost:.3f}"
+            f"SET_CONFIG {sched_alg} {memory_algorithm} "
+            f"{quantum:.3f} {switch_cost:.3f} {speed}"
         )
-
-    def speed(self, speed: int) -> str:
-        return f"SPEED {speed}"
 
     def add_process(self, process: UiProcess) -> str:
         return process.to_c_command()

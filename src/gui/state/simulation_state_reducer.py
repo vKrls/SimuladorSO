@@ -28,6 +28,7 @@ class SimulationStateReducer:
                     "cpu_busy": event.get("cpu_busy", False),
                     "quantum": event.get("config", {}).get("quantum", 0.0),
                     "switch_cost": event.get("config", {}).get("switch_cost", 0.0),
+                    "sim_speed": event.get("config", {}).get("sim_speed", 5),
                     "snapshot_interval_ms": event.get("config", {}).get(
                         "snapshot_interval_ms",
                         100,

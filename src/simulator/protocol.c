@@ -331,8 +331,8 @@ void send_data(struct Simulator *s, bool force)
 	printf(",\"memory_algorithm\":%d,\"memory_name\":", s->alg_memory);
 	send_json_string(memory_algorithm_name(s->alg_memory));
 	printf(",\"quantum\":%.3f,\"switch_cost\":%.3f,"
-	       "\"snapshot_interval_ms\":%d},\"processes\":",
-	       s->quantum, s->switch_cost, SNAPSHOT_INTERVAL_MS);
+	       "\"sim_speed\":%d,\"snapshot_interval_ms\":%d},\"processes\":",
+	       s->quantum, s->switch_cost, s->sim_speed, SNAPSHOT_INTERVAL_MS);
 	send_all_processes(s);
 	putchar(',');
 	send_queues(s);

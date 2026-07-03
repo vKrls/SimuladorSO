@@ -11,7 +11,8 @@
 #include <string.h>
 #include <unistd.h>
 
-static bool valid_config(int sched, int memory, double quantum, double cost)
+static bool valid_config(int sched, int memory, double quantum, double cost,
+			 int speed)
 {
 	if (sched < FCFS || sched > P_PRIOR || memory < FIRST || memory > WORST)
 		return false;
@@ -19,11 +20,46 @@ static bool valid_config(int sched, int memory, double quantum, double cost)
 		return false;
 	if (sched == ROUND && quantum <= 0.0)
 		return false;
+	if (speed < 1 || speed > 100)
+		return false;
 	return true;
+}
+
+static void apply_config(struct Simulator *s, int sched, int memory,
+			 double quantum, double cost, int speed)
+{
+	s->alg_sched = (enum AlgorithmSched)sched;
+	s->alg_memory = (enum AlgorithmMem)memory;
+	s->quantum = quantum;
+	s->switch_cost = cost;
+	s->sim_speed = speed;
+	log_event(s, "CONFIG",
+		  "Planificador=%s, memoria=%s, quantum=%.2f, cambio=%.2f, velocidad=%dx.",
+		  scheduler_algorithm_name(s->alg_sched),
+		  memory_algorithm_name(s->alg_memory),
+		  s->quantum, s->switch_cost, s->sim_speed);
+	send_data(s, true);
 }
 
 void process_stdin(struct Simulator *s, char *line)
 {
+	if (strncmp(line, "SET_CONFIG", 10) == 0) {
+		int sched;
+		int memory;
+		double quantum;
+		double cost;
+		int speed;
+		int parsed = sscanf(line, "SET_CONFIG %d %d %lf %lf %d",
+				    &sched, &memory, &quantum, &cost, &speed);
+		if (parsed != 5 ||
+		    !valid_config(sched, memory, quantum, cost, speed)) {
+			log_event(s, "ERROR", "SET_CONFIG inválido: %s", line);
+			return;
+		}
+		apply_config(s, sched, memory, quantum, cost, speed);
+		return;
+	}
+
 	if (strncmp(line, "CONFIG", 6) == 0) {
 		int sched;
 		int memory;
@@ -31,20 +67,12 @@ void process_stdin(struct Simulator *s, char *line)
 		double cost;
 		int parsed = sscanf(line, "CONFIG %d %d %lf %lf",
 				    &sched, &memory, &quantum, &cost);
-		if (parsed != 4 || !valid_config(sched, memory, quantum, cost)) {
+		if (parsed != 4 ||
+		    !valid_config(sched, memory, quantum, cost, s->sim_speed)) {
 			log_event(s, "ERROR", "CONFIG inválido: %s", line);
 			return;
 		}
-		s->alg_sched = (enum AlgorithmSched)sched;
-		s->alg_memory = (enum AlgorithmMem)memory;
-		s->quantum = quantum;
-		s->switch_cost = cost;
-		log_event(s, "CONFIG",
-			  "Planificador=%s, memoria=%s, quantum=%.2f, cambio=%.2f.",
-			  scheduler_algorithm_name(s->alg_sched),
-			  memory_algorithm_name(s->alg_memory),
-			  s->quantum, s->switch_cost);
-		send_data(s, true);
+		apply_config(s, sched, memory, quantum, cost, s->sim_speed);
 		return;
 	}
 
@@ -100,6 +128,7 @@ void process_stdin(struct Simulator *s, char *line)
 
 		s->sim_speed = speed;
 		log_event(s, "CONFIG", "Velocidad de simulación=%dx.", s->sim_speed);
+		send_data(s, true);
 
 		return;
 	}

@@ -70,7 +70,7 @@ class AlgorithmWindow(QWidget):
             self.change_memory_algorithm
         )
         header.switch_cost.setValue(self.client.switch_cost_for(self.algorithm))
-        header.switch_cost.editingFinished.connect(self.change_switch_cost)
+        header.switch_cost.valueChanged.connect(self.change_switch_cost)
         return header
 
     def _center(self, title: str) -> Center:
@@ -82,8 +82,7 @@ class AlgorithmWindow(QWidget):
         process_input.btn_stop.clicked.connect(self.pause_simulation)
         process_input.btn_kill.clicked.connect(self.stop_simulation)
         process_input.btn_clean.clicked.connect(self.clear_processes)
-        process_input.slider_speed.valueChanged.connect(self.update_speed_label)
-        process_input.slider_speed.sliderReleased.connect(self.send_speed)
+        process_input.slider_speed.valueChanged.connect(self.change_speed)
         if self.input_mode == "rr":
             process_input.input_quantum.setValue(
                 self.client.quantum_for(self.algorithm)
@@ -237,7 +236,8 @@ class AlgorithmWindow(QWidget):
     def update_speed_label(self, value: int) -> None:
         self.center.process_input.value_speed.setText(f"{value}x")
 
-    def send_speed(self) -> None:
+    def change_speed(self, value: int) -> None:
+        self.update_speed_label(value)
         speed = self.center.process_input.slider_speed.value()
         result = self.client.send_speed(self.algorithm, speed)
         if result.error:
@@ -291,8 +291,8 @@ class AlgorithmWindow(QWidget):
             self.header.set_state("ERROR", "#ff4d6d")
             return
 
-    def change_switch_cost(self) -> None:
-        cost = self.header.switch_cost.value()
+    def change_switch_cost(self, value: float | None = None) -> None:
+        cost = self.header.switch_cost.value() if value is None else value
         result = self.client.configure_switch_cost(self.algorithm, cost)
         if result.error:
             self.center.execute_tab.append_log(result.error, "ERR")
