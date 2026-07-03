@@ -10,19 +10,19 @@
 #define TIME_EPSILON 1e-9
 #define SNAPSHOT_INTERVAL_MS 100
 
-#define TOTAL_MEMORY_KB (1024 * 1024)
+#define TOTAL_MEMORY_KB (1024 * 1024)				/* 1GB de memoria en total */
 #define BLOCK_SIZE_KB 4
 #define TOTAL_BLOCKS (TOTAL_MEMORY_KB / BLOCK_SIZE_KB)
-#define OS_RESERVED_KB (128 * 1024)
+#define OS_RESERVED_KB (128 * 1024)				/* 128MB reservado para procesos SO */
 #define USER_MEMORY_KB (TOTAL_MEMORY_KB - OS_RESERVED_KB)
 
 #define RESERVED_PID_COUNT 100
 #define OS_PROCESS_COUNT 5
-#define RANDOM_PROCESS_COUNT 5
 #define IO_DEVICE_COUNT 5
 #define MAX_INTERRUPT_HISTORY 32
 #define ERR_CODE_MAX 24
 #define ERR_DESC_MAX 96
+#define PROCESS_SEGMENT_COUNT 5
 
 enum SimulatorState {
 	SIM_RUN = 0,
@@ -43,6 +43,14 @@ enum AlgorithmMem {
 	FIRST = 0,
 	BEST = 1,
 	WORST = 2,
+};
+
+enum SegmentType {
+	SEG_TEXT = 0,
+	SEG_DATA = 1,
+	SEG_BSS = 2,
+	SEG_HEAP = 3,
+	SEG_STACK = 4,
 };
 
 enum ProcessState {
@@ -81,25 +89,34 @@ struct Pcb;
 struct MemoryBlock;
 
 struct CpuContext {
-	int program_counter;
-	int stack_pointer;
+	int program_counter;		/* Heap */
+	int stack_pointer;		/* Stack */
 };
 
 struct SchedulerData {
-	double arrival_time;
-	double burst_time;
-	double remaining_time;
-	double start_time;
-	double finish_time;
-	double turnaround_time;
-	double response_time;
-	double ready_time;
-	double blocked_time;
-	double nonresident_time;
-	double cpu_time;
+	double arrival_time;		/* El proceso llega al sistema */
+	double burst_time;		/* Constante */
+	double remaining_time;		/* Burst restante */
+	double start_time;		/* Primera ejecucion */
+	double finish_time;		/* Termina el proceso */
+	double turnaround_time;		/* Desde arrival hasta finished */
+	double response_time;		/* Desde arrival hasta start */
+	double ready_time;		/* Tiempo en listos */
+	double blocked_time;		/* Tiempo bloqueado */
+	double nonresident_time;	/* Tiempo fuera de memoria BLOCKED / READY */
+	double cpu_time;		/* Tiempo ejecutandose */
 	int priority;
 	double remaining_quantum;
-	int context_switches;
+	int context_switches;		/* Cada vez que entra a los registros */
+};
+
+struct ProcessSegment {
+	enum SegmentType type;
+	int required_kb;
+	int assigned_blocks;
+	int waste_kb;
+	int start_block;
+	int limit_block;
 };
 
 struct MemoryData {
@@ -109,6 +126,9 @@ struct MemoryData {
 	int start;
 	int limit;
 	struct MemoryBlock *block;
+
+	struct ProcessSegment segments[PROCESS_SEGMENT_COUNT];
+	int segment_count;
 };
 
 struct IoData {
@@ -213,6 +233,7 @@ struct Simulator {
 	double current_time;
 	int sim_speed;
 	int next_pid;
+	int random_process_count;
 
 	enum AlgorithmSched alg_sched;
 	enum AlgorithmMem alg_memory;
@@ -250,75 +271,6 @@ struct Simulator {
 	uint64_t snapshot_sequence;
 	int64_t last_snapshot_ms;
 };
-
-const char *process_state_name(enum ProcessState state);
-const char *scheduler_algorithm_name(enum AlgorithmSched algorithm);
-const char *memory_algorithm_name(enum AlgorithmMem algorithm);
-const char *io_device_name(enum IoDevice device);
-const char *interrupt_type_name(enum IntType type);
-const char *gantt_type_name(enum GanttType type);
-void log_event(struct Simulator *s, const char *category, const char *format, ...);
-void set_process_state(struct Simulator *s, struct Pcb *p,
-		       enum ProcessState state, const char *reason);
-
-struct Queue init_queue(void);
-bool q_empty(const struct Queue *q);
-void enqueue(struct Queue *q, struct Pcb *p);
-struct Pcb *dequeue_head(struct Queue *q);
-void dequeue_pcb(struct Queue *q, struct Pcb *p);
-void q_free(struct Queue *q);
-void accumulate_queue_time(struct Queue *q, double delta, int kind);
-
-struct MemoryBlockList mem_init(void);
-void update_max_mem(struct MemoryBlockList *m);
-bool kmalloc(struct Simulator *s, struct Pcb *p);
-void kfree(struct MemoryBlockList *m, struct Pcb *p);
-void kmerge(struct MemoryBlockList *m);
-bool memory_can_fit(struct Simulator *s, struct Pcb *p);
-void memory_free_all(struct MemoryBlockList *m);
-
-struct Pcb create_user_pcb(struct Simulator *s, const char *name, int mem_kb,
-			   double burst, double arrival, int priority);
-void create_random_processes(struct Simulator *s);
-void demo(struct Simulator *s);
-void create_system_processes(struct Simulator *s);
-void finish_process(struct Simulator *s, struct Pcb *p, bool failed);
-void terminate_running_process(struct Simulator *s);
-void fail_running_process(struct Simulator *s, enum IntType type,
-			  const char *code, const char *description);
-
-void record_interrupt(struct Simulator *s, struct Pcb *p, enum IntType type,
-		      enum IoDevice device, bool fatal);
-void running_to_blocked(struct Simulator *s);
-void blocked_to_ready(struct Simulator *s, struct Pcb *p, enum IoDevice device);
-void tick_device_queues(struct Simulator *s, double delta);
-void mid_term_scheduler(struct Simulator *s);
-
-void process_arrival(struct Simulator *s);
-void job_scheduler(struct Simulator *s);
-void scheduler(struct Simulator *s);
-struct Pcb *alg_fcfs(struct Simulator *s);
-struct Pcb *alg_sjf(struct Simulator *s);
-struct Pcb *alg_priority(struct Simulator *s);
-bool should_preempt(struct Simulator *s);
-void dispatch_save_ctx(struct Simulator *s);
-void dispatch_restore_ctx(struct Simulator *s, struct Pcb *p);
-void dispatch(struct Simulator *s);
-void begin_context_switch(struct Simulator *s);
-void tick_running_process(struct Simulator *s, double delta);
-
-struct GanttList gantt_init(void);
-void update_gantt_interval(struct Simulator *s, enum GanttType type,
-			   struct Pcb *p, double delta);
-void gantt_free(struct GanttList *g);
-void tick_background(struct Simulator *s, double delta);
-bool simulation_finished(struct Simulator *s);
-void main_loop(struct Simulator *s);
-
-void send_json_string(const char *text);
-void send_data(struct Simulator *s, bool force);
-void process_stdin(struct Simulator *s, char *line);
-bool stdin_has_data(void);
 
 struct Simulator simulator_init(void);
 void simulator_free(struct Simulator *s);

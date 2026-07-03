@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from gui.simulation_client import ProcessData
+from gui.services.simulation_service import ProcessData
 
 
 class Process_Input(QGroupBox):
@@ -88,8 +88,13 @@ class Process_Input(QGroupBox):
         self.btn_add = QPushButton("Agregar proceso")
         self.btn_add.setObjectName("primaryButton")
         self.btn_random = QPushButton("Aleatorio")
+        self.input_random_count = QSpinBox()
+        self.input_random_count.setRange(1, 20)
+        self.input_random_count.setValue(5)
+        self.input_random_count.setFixedWidth(64)
         top.addWidget(self.btn_add)
         top.addWidget(self.btn_random)
+        top.addWidget(self.input_random_count)
         layout.addLayout(top)
 
         bottom = QHBoxLayout()

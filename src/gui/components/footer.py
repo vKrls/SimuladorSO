@@ -15,7 +15,7 @@ class Footer(QFrame):
         layout.setSpacing(14)
 
         layout.addWidget(self._plain("CPU ->"))
-        self.cpu = self._value("--", "#7bc67e", width=90)
+        self.cpu = self._value("--", "#7bc67e", width=130)
         layout.addWidget(self.cpu)
 
         layout.addWidget(self._sep())

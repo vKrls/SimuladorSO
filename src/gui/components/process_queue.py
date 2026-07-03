@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QGroupBox, QHBoxLayout, QLabel, QProgressBar, QScrollArea, QVBoxLayout, QWidget
 
 from gui.components.visual_widgets import StateChip
-from gui.simulation_client import UiProcess
+from gui.services.simulation_service import UiProcess
 
 
 class Process_Queue(QGroupBox):

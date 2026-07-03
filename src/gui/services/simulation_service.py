@@ -8,8 +8,6 @@ import subprocess
 import threading
 from typing import Any
 
-RANDOM_PROCESS_COUNT = 5
-DEMO_PROCESS_COUNT = 20
 TOTAL_MEMORY_KB = 1024 * 1024
 RESERVED_PID_COUNT = 100
 PROCESS_COLORS = [
@@ -54,7 +52,7 @@ class UiProcess:
     progress: float = 0.0
     start_time: float | None = None
     finish_time: float | None = None
-    waiting_time: float = 0.0
+    ready_time: float = 0.0
     turnaround_time: float = 0.0
     response_time: float | None = None
     interrupts: int = 0
@@ -64,6 +62,7 @@ class UiProcess:
     is_system: bool = False
     resident: bool = False
     memory_block_address: str = "0x0"
+    memory_segments: list[dict[str, Any]] = field(default_factory=list)
     io_device: str = "NONE"
     io_remaining: float = 0.0
     blocked_time: float = 0.0
@@ -115,16 +114,15 @@ class SimulationResult:
         return self.error is None
 
 
-class SimulationClient:
+class SimulationService:
     def __init__(self, c_executable: Path | None = None):
-        project_root = Path(__file__).resolve().parents[2]
-        self.c_executable = c_executable or project_root / "build" / "main"
+        project_root = Path(__file__).resolve().parents[3]
+        self.c_executable = c_executable or project_root / "build" / "simulator"
         self._next_pid_by_algorithm: dict[str, int] = {}
         self._processes_by_algorithm: dict[str, list[UiProcess]] = {}
         self._system_processes_by_algorithm: dict[str, list[UiProcess]] = {}
-        self._random_requests_by_algorithm: dict[str, int] = {}
-        self._demo_requests_by_algorithm: dict[str, int] = {}
-        self._random_quantum_by_algorithm: dict[str, float] = {}
+        self._random_process_count_by_algorithm: dict[str, int] = {}
+        self._quantum_by_algorithm: dict[str, float] = {}
         self._speed_by_algorithm: dict[str, int] = {}
         self._switch_cost_by_algorithm: dict[str, float] = {}
         self._memory_algorithm = 0
@@ -201,6 +199,32 @@ class SimulationClient:
             result.error = str(exc)
         return result
 
+    def quantum_for(self, algorithm: str) -> float:
+        if algorithm != "round_robin":
+            return 0.0
+        return self._quantum_by_algorithm.get(algorithm, 5.0)
+
+    def configure_quantum(self, algorithm: str, quantum: float) -> SimulationResult:
+        if quantum <= 0:
+            raise ValueError("El quantum debe ser mayor que cero.")
+        self._quantum_by_algorithm[algorithm] = quantum
+        for process in self._processes_by_algorithm.get(algorithm, []):
+            process.quantum = quantum
+
+        command = self.build_config_command(algorithm, self.processes_for(algorithm))
+        result = SimulationResult(
+            payload={"quantum": quantum, "sent": False},
+            command_lines=[command],
+        )
+        if not self.is_process_running() or self._active_algorithm != algorithm:
+            return result
+        try:
+            self.send_command(command)
+            result.payload["sent"] = True
+        except OSError as exc:
+            result.error = str(exc)
+        return result
+
     def processes_for(self, algorithm: str) -> list[UiProcess]:
         return list(self._processes_by_algorithm.get(algorithm, []))
 
@@ -217,7 +241,9 @@ class SimulationClient:
             memory=process_data.memory,
             arrival_time=process_data.arrival_time,
             priority=process_data.priority,
-            quantum=process_data.quantum,
+            quantum=self.quantum_for(algorithm)
+            if algorithm == "round_robin"
+            else process_data.quantum,
             color=self._color_for(pid),
         )
         self._processes_by_algorithm.setdefault(algorithm, []).append(process)
@@ -226,9 +252,7 @@ class SimulationClient:
     def clear_processes(self, algorithm: str) -> None:
         self._processes_by_algorithm[algorithm] = []
         self._next_pid_by_algorithm[algorithm] = RESERVED_PID_COUNT
-        self._random_requests_by_algorithm[algorithm] = 0
-        self._demo_requests_by_algorithm[algorithm] = 0
-        self._random_quantum_by_algorithm.pop(algorithm, None)
+        self._random_process_count_by_algorithm[algorithm] = 0
         self._speed_by_algorithm.pop(algorithm, None)
         self._state_by_algorithm.pop(algorithm, None)
 
@@ -256,43 +280,27 @@ class SimulationClient:
     def request_random_processes(
         self,
         algorithm: str,
-        quantum: float = 0.0,
+        count: int,
     ) -> SimulationResult:
-        self._random_requests_by_algorithm[algorithm] = (
-            self._random_requests_by_algorithm.get(algorithm, 0) + 1
+        count = max(1, min(20, count))
+        self._random_process_count_by_algorithm[algorithm] = (
+            self._random_process_count_by_algorithm.get(algorithm, 0) + count
         )
-        if quantum > 0:
-            self._random_quantum_by_algorithm[algorithm] = quantum
-        return self._load_commands(algorithm, ["RANDOM"])
-
-    def request_demo_processes(self, algorithm: str) -> SimulationResult:
-        self._demo_requests_by_algorithm[algorithm] = (
-            self._demo_requests_by_algorithm.get(algorithm, 0) + 1
-        )
-        return self._load_commands(algorithm, ["DEMO"])
+        return self._load_commands(algorithm, [f"RANDOM {count}"])
 
     def random_process_count_for(self, algorithm: str) -> int:
-        requests = self._random_requests_by_algorithm.get(algorithm, 0)
-        return requests * RANDOM_PROCESS_COUNT
-
-    def demo_process_count_for(self, algorithm: str) -> int:
-        requests = self._demo_requests_by_algorithm.get(algorithm, 0)
-        return requests * DEMO_PROCESS_COUNT
+        return self._random_process_count_by_algorithm.get(algorithm, 0)
 
     def has_processes_for(self, algorithm: str) -> bool:
-        return bool(
-            self.processes_for(algorithm)
-            or self.random_process_count_for(algorithm)
-            or self.demo_process_count_for(algorithm)
-        )
+        return bool(self.processes_for(algorithm) or self.random_process_count_for(algorithm))
 
     def build_payload(self, algorithm: str) -> dict[str, Any]:
         return {
             "algorithm": algorithm,
             "memory_algorithm": self.memory_algorithm_name,
+            "quantum": self.quantum_for(algorithm),
             "processes": [process.to_payload() for process in self.processes_for(algorithm)],
-            "random_requests": self._random_requests_by_algorithm.get(algorithm, 0),
-            "demo_requests": self._demo_requests_by_algorithm.get(algorithm, 0),
+            "random_process_count": self._random_process_count_by_algorithm.get(algorithm, 0),
         }
 
     def build_c_commands(self, algorithm: str) -> list[str]:
@@ -338,10 +346,7 @@ class SimulationClient:
         }.get(algorithm, 0)
         quantum = 0.0
         if algorithm == "round_robin":
-            quantum = next(
-                (process.quantum for process in processes if process.quantum > 0),
-                self._random_quantum_by_algorithm.get(algorithm, 1.0),
-            )
+            quantum = self.quantum_for(algorithm)
         switch_cost = self.switch_cost_for(algorithm)
         return (
             f"CONFIG {sched_alg} {self._memory_algorithm} "
@@ -388,6 +393,9 @@ class SimulationClient:
         if not self.is_process_running() or self._active_algorithm != algorithm:
             return SimulationResult(payload={}, command_lines=[f"SPEED {speed}"])
         return self._send_control(f"SPEED {speed}")
+
+    def send_raw_command(self, command: str) -> SimulationResult:
+        return self._send_control(command)
 
     def stop(self) -> SimulationResult:
         result = self._send_control("STOP")
@@ -521,8 +529,7 @@ class SimulationClient:
             and event.get("name") == "created_processes"
             for event in events
         ):
-            self._random_requests_by_algorithm[algorithm] = 0
-            self._demo_requests_by_algorithm[algorithm] = 0
+            self._random_process_count_by_algorithm[algorithm] = 0
         return state
 
     def latest_state(self, algorithm: str) -> dict[str, Any]:
@@ -745,7 +752,7 @@ class SimulationClient:
             progress=0.0 if burst <= 0 else (burst - remaining) / burst * 100.0,
             start_time=None if start < 0 else start,
             finish_time=None if finish < 0 else finish,
-            waiting_time=float(scheduler.get("waiting_time", 0.0)),
+            ready_time=float(scheduler.get("ready_time", 0.0)),
             turnaround_time=float(scheduler.get("turnaround_time", 0.0)),
             response_time=None if start < 0 else response,
             interrupts=int(interrupts.get("total", 0)),
@@ -755,6 +762,7 @@ class SimulationClient:
             is_system=bool(pcb.get("is_system", False)),
             resident=bool(pcb.get("resident", False)),
             memory_block_address=str(memory.get("block_address", "0x0")),
+            memory_segments=list(memory.get("segments", [])),
             io_device=str(io.get("device", "NONE")),
             io_remaining=max(0.0, float(io.get("remaining_time", 0.0))),
             blocked_time=float(scheduler.get("blocked_time", 0.0)),
@@ -833,7 +841,7 @@ class SimulationClient:
             return sum(float(getattr(process, attribute) or 0.0) for process in finished) / len(finished)
 
         return {
-            "avg_waiting": average("waiting_time"),
+            "avg_ready_time": average("ready_time"),
             "avg_turnaround": average("turnaround_time"),
             "avg_response": average("response_time"),
             "throughput": len(finished) / current_time if current_time > 0 else 0.0,

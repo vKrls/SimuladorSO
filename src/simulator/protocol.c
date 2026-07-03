@@ -65,6 +65,26 @@ static void send_interrupts(struct Pcb *p)
 	printf("]}");
 }
 
+static void send_process_segments(struct Pcb *p)
+{
+	int i;
+
+	putchar('[');
+	for (i = 0; i < p->mem.segment_count; i++) {
+		struct ProcessSegment *segment = &p->mem.segments[i];
+		if (i > 0)
+			putchar(',');
+		printf("{\"type\":");
+		send_json_string(segment_type_name(segment->type));
+		printf(",\"required_kb\":%d,\"assigned_blocks\":%d,"
+		       "\"waste_kb\":%d,\"start_block\":%d,\"limit_block\":%d}",
+		       segment->required_kb, segment->assigned_blocks,
+		       segment->waste_kb, segment->start_block,
+		       segment->limit_block);
+	}
+	putchar(']');
+}
+
 static void send_pcb(struct Pcb *p)
 {
 	printf("{\"pid\":%d,\"name\":", p->pid);
@@ -82,10 +102,7 @@ static void send_pcb(struct Pcb *p)
 	       "\"context_switches\":%d},"
 	       "\"memory\":{\"required_kb\":%d,\"assigned_blocks\":%d,"
 	       "\"waste_kb\":%d,\"start_block\":%d,\"limit_block\":%d,"
-	       "\"block_address\":\"%p\"},"
-	       "\"io\":{\"has_io\":%s,\"started\":%s,\"completed\":%s,"
-	       "\"start_time\":%.3f,\"duration\":%.3f,\"remaining_time\":%.3f,"
-	       "\"device\":",
+	       "\"block_address\":\"%p\",\"segments\":",
 	       p->is_system ? "true" : "false", p->resident ? "true" : "false",
 	       p->swap_count, p->last_swap_out, p->last_swap_in,
 	       p->cpu_ctx.program_counter, p->cpu_ctx.stack_pointer,
@@ -97,7 +114,11 @@ static void send_pcb(struct Pcb *p)
 	       p->sched.priority, p->sched.remaining_quantum,
 	       p->sched.context_switches, p->mem.required_kb,
 	       p->mem.assigned_blocks, p->mem.waste_kb,
-	       p->mem.start, p->mem.limit, (void *)p->mem.block,
+	       p->mem.start, p->mem.limit, (void *)p->mem.block);
+	send_process_segments(p);
+	printf("},\"io\":{\"has_io\":%s,\"started\":%s,\"completed\":%s,"
+	       "\"start_time\":%.3f,\"duration\":%.3f,\"remaining_time\":%.3f,"
+	       "\"device\":",
 	       p->io.has_io ? "true" : "false",
 	       p->io.started ? "true" : "false",
 	       p->io.completed ? "true" : "false",
@@ -246,24 +267,24 @@ static void send_gantt(struct Simulator *s)
 static void send_stats(struct Simulator *s)
 {
 	struct Node *node;
-	double waiting = 0.0;
+	double ready = 0.0;
 	double turnaround = 0.0;
 	double response = 0.0;
 	int measured = 0;
 
 	for (node = s->finished_q.head; node != NULL; node = node->next) {
 		struct Pcb *p = node->pcb;
-		waiting += p->sched.ready_time;
+		ready += p->sched.ready_time;
 		turnaround += p->sched.turnaround_time;
 		response += p->sched.response_time;
 		measured++;
 	}
-	printf("\"stats\":{\"avg_waiting\":%.3f,\"avg_turnaround\":%.3f,"
+	printf("\"stats\":{\"avg_ready_time\":%.3f,\"avg_turnaround\":%.3f,"
 	       "\"avg_response\":%.3f,\"throughput\":%.6f,\"cpu_util\":%.3f,"
 	       "\"total_time\":%.3f,\"completed\":%d,\"errors\":%d,"
 	       "\"interrupts\":%d,\"swap_outs\":%d,\"swap_ins\":%d,"
 	       "\"context_switches\":%d,\"context_switch_time\":%.3f}",
-	       measured == 0 ? 0.0 : waiting / measured,
+	       measured == 0 ? 0.0 : ready / measured,
 	       measured == 0 ? 0.0 : turnaround / measured,
 	       measured == 0 ? 0.0 : response / measured,
 	       s->current_time <= 0.0 ? 0.0 :

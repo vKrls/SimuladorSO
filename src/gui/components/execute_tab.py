@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from html import escape
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QFrame,
@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QProgressBar,
     QPushButton,
     QTableWidget,
@@ -22,10 +23,12 @@ from PySide6.QtWidgets import (
 )
 
 from gui.components.visual_widgets import GanttWidget, GlowLabel, MemoryMapWidget, STATE_COLORS, STATE_LABELS
-from gui.simulation_client import SimulationResult, UiProcess
+from gui.services.simulation_service import SimulationResult, UiProcess
 
 
 class Execute_Tab(QTabWidget):
+    command_submitted = Signal(str)
+
     def __init__(self):
         super().__init__()
         self.metrics: dict[str, QLabel] = {}
@@ -143,6 +146,14 @@ class Execute_Tab(QTabWidget):
 
     def _build_stats_tab(self) -> QWidget:
         widget = QWidget()
+        widget.setObjectName("statsTab")
+        widget.setStyleSheet("""
+            QWidget#statsTab QLabel { color: #ffffff; }
+            QWidget#statsTab QGroupBox { color: #ffffff; }
+            QWidget#statsTab QGroupBox::title { color: #ffffff; }
+            QWidget#statsTab QTableWidget { color: #ffffff; }
+            QWidget#statsTab QHeaderView::section { color: #ffffff; }
+        """)
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(10)
@@ -151,18 +162,18 @@ class Execute_Tab(QTabWidget):
         metrics_layout = QGridLayout(metrics_group)
         metrics_layout.setSpacing(8)
         metrics = [
-            ("avg_waiting", "Espera Promedio", "#f7c59f"),
-            ("avg_turnaround", "TAT Promedio", "#7bc67e"),
-            ("avg_response", "Respuesta Promedio", "#c77dff"),
-            ("throughput", "Throughput", "#00d4ff"),
-            ("cpu_util", "Utilización CPU", "#ff6b35"),
-            ("total_time", "Tiempo Total", "#48cae4"),
-            ("interrupts", "Interrupciones", "#ffd60a"),
-            ("errors", "Errores", "#ff4d6d"),
-            ("swap_outs", "Swap-outs", "#c77dff"),
-            ("swap_ins", "Swap-ins", "#81b29a"),
-            ("context_switches", "Cambios Contexto", "#f4a261"),
-            ("context_switch_time", "Tiempo Contexto", "#e07a5f"),
+            ("avg_ready_time", "Ready Promedio", "#0ea5e9"),
+            ("avg_turnaround", "TAT Promedio", "#0284c7"),
+            ("avg_response", "Respuesta Promedio", "#2563eb"),
+            ("throughput", "Throughput", "#38bdf8"),
+            ("cpu_util", "Utilización CPU", "#06b6d4"),
+            ("total_time", "Tiempo Total", "#0891b2"),
+            ("interrupts", "Interrupciones", "#60a5fa"),
+            ("errors", "Errores", "#3b82f6"),
+            ("swap_outs", "Swap-outs", "#22d3ee"),
+            ("swap_ins", "Swap-ins", "#0e7490"),
+            ("context_switches", "Cambios Contexto", "#1d4ed8"),
+            ("context_switch_time", "Tiempo Contexto", "#075985"),
         ]
         for index, (key, label, color) in enumerate(metrics):
             metrics_layout.addWidget(self._metric_box(key, label, color), index // 3, index % 3)
@@ -171,7 +182,7 @@ class Execute_Tab(QTabWidget):
         table_group = QGroupBox("TABLA DE RESULTADOS POR PROCESO")
         table_layout = QVBoxLayout(table_group)
         self.stats_table = QTableWidget()
-        headers = ["PID", "Nombre", "Llegada", "Burst", "Inicio", "Fin", "Espera", "TAT", "Resp.", "Memoria"]
+        headers = ["PID", "Nombre", "Llegada", "Burst", "Inicio", "Fin", "Ready", "TAT", "Resp.", "Memoria"]
         self._configure_table(self.stats_table, headers, stretch=True)
         table_layout.addWidget(self.stats_table)
         layout.addWidget(table_group, 1)
@@ -184,10 +195,10 @@ class Execute_Tab(QTabWidget):
         layout.setContentsMargins(10, 6, 10, 6)
         value = QLabel("--")
         value.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        value.setStyleSheet(f"color: {color}; font-size: 20px; font-weight: bold;")
+        value.setStyleSheet("color: #ffffff; font-size: 20px; font-weight: bold;")
         text = QLabel(label)
         text.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        text.setStyleSheet("color: #484f58; font-size: 8px;")
+        text.setStyleSheet("color: #ffffff; font-size: 8px;")
         layout.addWidget(value)
         layout.addWidget(text)
         self.metrics[key] = value
@@ -206,7 +217,7 @@ class Execute_Tab(QTabWidget):
         self.pcb_table = QTableWidget()
         headers = [
             "PID", "Nombre", "Estado", "PC", "Puntero bloque", "Base", "Límite",
-            "Memoria", "Residente", "Burst", "Restante", "CPU", "Espera",
+            "Memoria", "Residente", "Burst", "Restante", "CPU", "Ready",
             "Bloqueado", "Fuera de RAM", "Llegada", "Inicio", "Fin", "TAT", "Resp.",
             "Interrup.", "Planificadas", "Historial interrupciones", "Dispositivo",
             "I/O restante", "Cambios ctx", "Swaps", "Último swap-out",
@@ -258,7 +269,26 @@ class Execute_Tab(QTabWidget):
         self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
         layout.addWidget(self.log_view)
+
+        command_row = QHBoxLayout()
+        self.command_input = QLineEdit()
+        self.command_input.setPlaceholderText("Comando C")
+        self.command_input.returnPressed.connect(self._submit_command)
+        self.btn_send_command = QPushButton("Enviar")
+        self.btn_send_command.setObjectName("primaryButton")
+        self.btn_send_command.setFixedWidth(86)
+        self.btn_send_command.clicked.connect(self._submit_command)
+        command_row.addWidget(self.command_input, 1)
+        command_row.addWidget(self.btn_send_command)
+        layout.addLayout(command_row)
         return widget
+
+    def _submit_command(self) -> None:
+        command = self.command_input.text().strip()
+        if not command:
+            return
+        self.command_input.clear()
+        self.command_submitted.emit(command)
 
     def _configure_table(self, table: QTableWidget, headers: list[str], *, stretch: bool) -> None:
         table.setColumnCount(len(headers))
@@ -334,12 +364,7 @@ class Execute_Tab(QTabWidget):
             self._update_device_counters(processes)
             self._update_cpu_panel(processes, [], None)
 
-        if result.command_lines:
-            self._append_log("Comandos enviados:", "INFO")
-            for line in result.command_lines:
-                self._append_log(f"> {line}", "RUN")
         if result.stdout_lines:
-            self._append_log("Salida:", "INFO")
             for line in result.stdout_lines:
                 self._append_log(line, "INFO")
         if result.error:
@@ -373,8 +398,6 @@ class Execute_Tab(QTabWidget):
                 self._append_log(str(event.get("message", "")), str(event.get("level", "INFO")))
         elif result.error:
             self._append_log(result.error, "WARN")
-        else:
-            self._append_log("Simulación lista.", "INFO")
 
     def append_log(self, message: str, level: str = "INFO") -> None:
         self._append_log(message, level)
@@ -461,7 +484,7 @@ class Execute_Tab(QTabWidget):
                 self._fmt(process.burst_time),
                 self._dash(process.start_time),
                 self._dash(process.finish_time),
-                self._fmt(process.waiting_time),
+                self._fmt(process.ready_time),
                 self._fmt(process.turnaround_time),
                 self._dash(process.response_time),
                 self._memory(process.memory),
@@ -484,7 +507,7 @@ class Execute_Tab(QTabWidget):
                 self._fmt(process.burst_time),
                 self._fmt(process.remaining_time or 0),
                 self._fmt(process.cpu_time),
-                self._fmt(process.waiting_time),
+                self._fmt(process.ready_time),
                 self._fmt(process.blocked_time),
                 self._fmt(process.nonresident_time),
                 self._fmt(process.arrival_time),
@@ -514,9 +537,11 @@ class Execute_Tab(QTabWidget):
     def _set_row(self, table: QTableWidget, row: int, values: list, process: UiProcess) -> None:
         for column, value in enumerate(values):
             item = QTableWidgetItem(str(value))
-            if column == 1:
+            if table is self.stats_table:
+                item.setForeground(QColor("#ffffff"))
+            elif column == 1:
                 item.setForeground(QColor(process.color))
-            if column == 2:
+            elif column == 2:
                 item.setForeground(QColor(STATE_COLORS.get(process.state, "#c9d1d9")))
             table.setItem(row, column, item)
 

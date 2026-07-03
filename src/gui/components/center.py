@@ -6,11 +6,11 @@ from PySide6.QtWidgets import QSplitter, QVBoxLayout, QWidget
 from gui.components.execute_tab import Execute_Tab
 from gui.components.process_input import Process_Input
 from gui.components.process_queue import Process_Queue
-from gui.simulation_client import SimulationClient
+from gui.services.simulation_service import SimulationService
 
 
 class Center(QWidget):
-    def __init__(self, client: SimulationClient, alg: str = ""):
+    def __init__(self, client: SimulationService, alg: str = ""):
         super().__init__()
         self.client = client
         self.alg = alg

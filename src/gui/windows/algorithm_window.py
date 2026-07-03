@@ -6,14 +6,14 @@ from PySide6.QtWidgets import QVBoxLayout, QWidget
 from gui.components.center import Center
 from gui.components.footer import Footer
 from gui.components.header import Header
-from gui.simulation_client import ProcessData, SimulationClient, UiProcess
+from gui.services.simulation_service import SimulationService, UiProcess
 
 
 class AlgorithmWindow(QWidget):
     def __init__(
         self,
         main_window,
-        client: SimulationClient,
+        client: SimulationService,
         *,
         algorithm: str,
         title: str,
@@ -70,7 +70,6 @@ class AlgorithmWindow(QWidget):
         )
         header.switch_cost.setValue(self.client.switch_cost_for(self.algorithm))
         header.switch_cost.editingFinished.connect(self.change_switch_cost)
-        header.btn_demo.clicked.connect(self.load_demo_processes)
         return header
 
     def _center(self, title: str) -> Center:
@@ -84,6 +83,12 @@ class AlgorithmWindow(QWidget):
         process_input.btn_clean.clicked.connect(self.clear_processes)
         process_input.slider_speed.valueChanged.connect(self.update_speed_label)
         process_input.slider_speed.sliderReleased.connect(self.send_speed)
+        if self.input_mode == "rr":
+            process_input.input_quantum.setValue(
+                self.client.quantum_for(self.algorithm)
+            )
+            process_input.input_quantum.valueChanged.connect(self.change_quantum)
+        center.execute_tab.command_submitted.connect(self.send_log_command)
         algorithm_label = {
             "fcfs": "FCFS",
             "sjf_nonpreemptive": "SJF-N",
@@ -137,11 +142,8 @@ class AlgorithmWindow(QWidget):
         if self._simulation_started:
             return
 
-        quantum = 0.0
-        if self.input_mode == "rr":
-            quantum = self.center.process_input.input_quantum.value()
-
-        result = self.client.request_random_processes(self.algorithm, quantum)
+        count = self.center.process_input.input_random_count.value()
+        result = self.client.request_random_processes(self.algorithm, count)
         self.center.execute_tab.set_bridge_result(
             result,
             self.client.processes_for(self.algorithm),
@@ -149,24 +151,9 @@ class AlgorithmWindow(QWidget):
         )
         if result.ok:
             self._poll_timer.start()
-            self.center.execute_tab.set_status("Cargando 5 procesos aleatorios desde C...")
-            self.header.set_state("CARGANDO", "#00d4ff")
-        else:
-            self.header.set_state("ERROR", "#ff4d6d")
-
-    def load_demo_processes(self) -> None:
-        if self._simulation_started:
-            return
-
-        result = self.client.request_demo_processes(self.algorithm)
-        self.center.execute_tab.set_bridge_result(
-            result,
-            self.client.processes_for(self.algorithm),
-            self.client.system_processes_for(self.algorithm),
-        )
-        if result.ok:
-            self._poll_timer.start()
-            self.center.execute_tab.set_status("Cargando 20 procesos demo desde C...")
+            self.center.execute_tab.set_status(
+                f"Cargando {count} procesos aleatorios desde C..."
+            )
             self.header.set_state("CARGANDO", "#00d4ff")
         else:
             self.header.set_state("ERROR", "#ff4d6d")
@@ -252,11 +239,38 @@ class AlgorithmWindow(QWidget):
     def send_speed(self) -> None:
         speed = self.center.process_input.slider_speed.value()
         result = self.client.send_speed(self.algorithm, speed)
-        if result.ok and self.client.is_process_running():
-            self.center.execute_tab.append_log(
-                f"Velocidad actualizada: {speed}x",
-                "INFO",
-            )
+        if result.error:
+            self.center.execute_tab.append_log(result.error, "ERR")
+
+    def send_log_command(self, command: str) -> None:
+        result = self.client.send_raw_command(command)
+        if result.error:
+            self.center.execute_tab.append_log(result.error, "ERR")
+            self.header.set_state("ERROR", "#ff4d6d")
+            return
+
+        upper = command.strip().upper()
+        if upper.startswith("RUN"):
+            self._paused = False
+            self._simulation_started = True
+            self.center.process_input.btn_stop.setText("Pausar")
+            self._set_controls_running(True)
+            self.header.set_state("C EJECUTANDO", "#7bc67e")
+        elif upper.startswith("PAUSE"):
+            self._paused = True
+            self.center.process_input.btn_stop.setText("Continuar")
+            self.header.set_state("PAUSA", "#f7c59f")
+        elif upper.startswith("STOP"):
+            self._paused = False
+            self._simulation_started = False
+            self.center.process_input.btn_stop.setText("Pausar")
+            self._set_controls_running(False)
+            self.header.set_state("DETENIDO", "#ff4d6d")
+        elif not self._simulation_started:
+            self.header.set_state("CARGANDO", "#00d4ff")
+
+        self._poll_timer.start()
+        self._poll_c_output()
 
     def change_memory_algorithm(self, index: int) -> None:
         memory_algorithm = self.header.memory_combo.itemData(index)
@@ -276,20 +290,6 @@ class AlgorithmWindow(QWidget):
             self.header.set_state("ERROR", "#ff4d6d")
             return
 
-        if result.payload.get("sent"):
-            self.center.execute_tab.append_log(
-                f"Política de memoria actualizada: "
-                f"{self.client.memory_algorithm_name}. "
-                "Se aplicará a las próximas asignaciones.",
-                "INFO",
-            )
-        else:
-            self.center.execute_tab.append_log(
-                f"Política de memoria seleccionada: "
-                f"{self.client.memory_algorithm_name}.",
-                "INFO",
-            )
-
     def change_switch_cost(self) -> None:
         cost = self.header.switch_cost.value()
         result = self.client.configure_switch_cost(self.algorithm, cost)
@@ -297,16 +297,47 @@ class AlgorithmWindow(QWidget):
             self.center.execute_tab.append_log(result.error, "ERR")
             self.header.set_state("ERROR", "#ff4d6d")
             return
-        self.center.execute_tab.append_log(
-            f"Costo de cambio de contexto: {cost:.1f} u.t.",
-            "INFO",
+
+    def change_quantum(self, value: float) -> None:
+        if self.input_mode != "rr":
+            return
+        result = self.client.configure_quantum(self.algorithm, value)
+        if result.error:
+            self.center.execute_tab.append_log(result.error, "ERR")
+            self.header.set_state("ERROR", "#ff4d6d")
+            return
+        self.center.process_queue.set_processes(
+            self.client.processes_for(self.algorithm)
         )
+        self._poll_timer.start()
+        self._poll_c_output()
 
     def go_back(self) -> None:
         self._poll_timer.stop()
         self.main_window.show_main_menu()
 
     def _poll_c_output(self) -> None:
+        events = self._read_c_stdout_events()
+
+        if events:
+            self._apply_c_events(events)
+
+        for line in self.client.read_stderr_lines():
+            self.center.execute_tab.append_log(line, "ERR")
+
+        if not self.client.is_process_running():
+            final_events = self._read_c_stdout_events()
+            if final_events:
+                self._apply_c_events(final_events)
+            for line in self.client.read_stderr_lines():
+                self.center.execute_tab.append_log(line, "ERR")
+            self._poll_timer.stop()
+            if self.header.state.text() == "C EJECUTANDO":
+                self.header.set_state("FINALIZADO", "#7bc67e")
+                self._set_controls_running(False)
+            self._simulation_started = False
+
+    def _read_c_stdout_events(self) -> list[dict]:
         events = []
         for line in self.client.read_stdout_lines():
             event = self.client.parse_event(line, self.algorithm)
@@ -314,32 +345,23 @@ class AlgorithmWindow(QWidget):
                 self.center.execute_tab.append_log(line, "INFO")
             else:
                 events.append(event)
+        return events
 
-        if events:
-            state = self.client.apply_events(self.algorithm, events)
-            processes = self.client.processes_for(self.algorithm)
-            system_processes = self.client.system_processes_for(self.algorithm)
-            self.center.process_queue.set_processes(processes)
-            self.center.execute_tab.set_live_state(
-                processes,
-                system_processes,
-                state,
-            )
-            self._sync_summary(processes, state)
+    def _apply_c_events(self, events: list[dict]) -> None:
+        state = self.client.apply_events(self.algorithm, events)
+        processes = self.client.processes_for(self.algorithm)
+        system_processes = self.client.system_processes_for(self.algorithm)
+        self.center.process_queue.set_processes(processes)
+        self.center.execute_tab.set_live_state(
+            processes,
+            system_processes,
+            state,
+        )
+        self._sync_summary(processes, state)
 
-            if not self._simulation_started:
-                self.center.execute_tab.set_status("Procesos cargados en C.")
-                self.header.set_state("CARGADO", "#00d4ff")
-
-        for line in self.client.read_stderr_lines():
-            self.center.execute_tab.append_log(line, "ERR")
-
-        if not self.client.is_process_running():
-            self._poll_timer.stop()
-            if self.header.state.text() == "C EJECUTANDO":
-                self.header.set_state("FINALIZADO", "#7bc67e")
-                self._set_controls_running(False)
-            self._simulation_started = False
+        if not self._simulation_started:
+            self.center.execute_tab.set_status("Procesos cargados en C.")
+            self.header.set_state("CARGADO", "#00d4ff")
 
     def _refresh_process_views(self, status: str) -> None:
         processes = self.client.processes_for(self.algorithm)
@@ -356,11 +378,7 @@ class AlgorithmWindow(QWidget):
         processes: list[UiProcess],
         state: dict | None = None,
     ) -> None:
-        total = (
-            len(processes)
-            + self.client.random_process_count_for(self.algorithm)
-            + self.client.demo_process_count_for(self.algorithm)
-        )
+        total = len(processes) + self.client.random_process_count_for(self.algorithm)
         finished = sum(
             1 for process in processes
             if process.state == "TERMINATED"
@@ -368,21 +386,29 @@ class AlgorithmWindow(QWidget):
         state = state or self.client.latest_state(self.algorithm)
         snapshot = state.get("snapshot", {})
         memory = state.get("memory_map", {})
+        running = state.get("running")
         free_memory = int(memory.get("free_kb", 1024 * 1024))
         current_time = float(snapshot.get("current_time", 0.0))
+        if running is None:
+            cpu_text = "--"
+        else:
+            cpu_pid = int(running.get("pid", -1))
+            cpu_name = str(running.get("name", f"P{cpu_pid}"))
+            cpu_text = f"{cpu_name}({cpu_pid})"
 
         self.header.total_time.setText(f"T: {current_time:.1f} u.t.")
         self.footer.process.setText(str(total))
         self.footer.finished.setText(str(finished))
         self.footer.memory.setText(f"{free_memory / 1024:.0f} MB")
-        self.footer.cpu.setText("C" if self.client.is_process_running() else "--")
+        self.footer.cpu.setText(cpu_text)
+        self.footer.cpu.setToolTip(cpu_text)
 
     def _set_controls_running(self, running: bool) -> None:
         process_input = self.center.process_input
         process_input.btn_add.setEnabled(True)
         process_input.btn_random.setEnabled(not running)
+        process_input.input_random_count.setEnabled(not running)
         process_input.btn_start.setEnabled(not running)
         process_input.btn_clean.setEnabled(not running)
         process_input.btn_stop.setEnabled(running)
         process_input.btn_kill.setEnabled(running)
-        self.header.btn_demo.setEnabled(not running)

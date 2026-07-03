@@ -13,17 +13,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from gui.fcfs_window import FCFS_Window
-from gui.pra_window import PRa_Window
-from gui.prn_window import PRn_Window
-from gui.rr_window import RR_Window
-from gui.sjfa_window import SJFa_Window
-from gui.sjfn_window import SJFn_Window
-from gui.simulation_client import SimulationClient
+from gui.windows.fcfs_window import FCFS_Window
+from gui.windows.pra_window import PRa_Window
+from gui.windows.prn_window import PRn_Window
+from gui.windows.rr_window import RR_Window
+from gui.windows.sjfa_window import SJFa_Window
+from gui.windows.sjfn_window import SJFn_Window
+from gui.services.simulation_service import SimulationService
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, client: SimulationClient):
+    def __init__(self, client: SimulationService):
         super().__init__()
         self.client = client
         self.setWindowTitle("Simulador de Planificación")

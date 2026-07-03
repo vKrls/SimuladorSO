@@ -1,4 +1,4 @@
-from gui.algorithm_window import AlgorithmWindow
+from gui.windows.algorithm_window import AlgorithmWindow
 
 
 class SJFn_Window(AlgorithmWindow):

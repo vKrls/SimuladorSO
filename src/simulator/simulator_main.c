@@ -1,7 +1,7 @@
 #include "input.h"
 #include "loop.h"
 #include "protocol.h"
-#include "runtime.h"
+#include "simulator.h"
 
 #include <stdio.h>
 #include <stdlib.h>

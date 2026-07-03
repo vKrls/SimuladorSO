@@ -15,6 +15,8 @@ static struct Pcb pcb_defaults(void)
 	struct Pcb p;
 
 	memset(&p, 0, sizeof(p));
+
+	p.cpu_ctx.stack_pointer = -1;
 	p.mem.start = -1;
 	p.mem.limit = -1;
 	p.sched.start_time = -1.0;
@@ -25,27 +27,41 @@ static struct Pcb pcb_defaults(void)
 	p.err.occurred_at = -1.0;
 	p.last_swap_out = -1.0;
 	p.last_swap_in = -1.0;
+
 	return p;
+}
+
+static int interrupt_target_for(int mem_kb, double burst)
+{
+	double memory_factor = (double)mem_kb / (192.0 * 1024.0);
+	double burst_factor = burst / 30.0;
+	int target = 5 + (int)(((memory_factor + burst_factor) / 2.0) * 15.0);
+
+	if (target < 5)
+		return 5;
+	if (target > 20)
+		return 20;
+	return target;
 }
 
 struct Pcb create_user_pcb(struct Simulator *s, const char *name, int mem_kb,
 			   double burst, double arrival, int priority)
 {
 	struct Pcb p = pcb_defaults();
-	double memory_factor;
-	double burst_factor;
 
 	snprintf(p.name, sizeof(p.name), "%s", name);
 	p.pid = s->next_pid++;
 	p.state = NEW;
+
 	p.mem.required_kb = mem_kb;
+	
 	p.sched.arrival_time = arrival;
 	p.sched.burst_time = burst;
 	p.sched.remaining_time = burst;
 	p.sched.priority = priority;
 	p.sched.remaining_quantum = s->quantum;
-	p.cpu_ctx.stack_pointer = 0x1000 + p.pid * 16;
 
+	/* Entrada y Salida */
 	p.io.has_io = rand() % 100 < 65;
 	p.io.start_time = burst * (0.15 + (rand() % 66) / 100.0);
 	if (p.io.has_io) {
@@ -54,15 +70,12 @@ struct Pcb create_user_pcb(struct Simulator *s, const char *name, int mem_kb,
 		p.io.device = (enum IoDevice)(rand() % IO_DEVICE_COUNT);
 	}
 
-	memory_factor = (double)mem_kb / (192.0 * 1024.0);
-	burst_factor = burst / 30.0;
-	p.interrupt.periodic_target = 2 + (int)((memory_factor + burst_factor) * 3.0);
-	if (p.interrupt.periodic_target > 12)
-		p.interrupt.periodic_target = 12;
-	p.interrupt.next_cpu_time =
-		burst / (p.interrupt.periodic_target + 1.0);
+	/* Interrupciones en base a la memoria y burst */
+	p.interrupt.periodic_target = interrupt_target_for(mem_kb, burst);
+	p.interrupt.next_cpu_time = burst / (p.interrupt.periodic_target + 1.0);
 
-	p.err.planned = rand() % 100 < 5;
+	/* Errores (0.5 %) */
+	p.err.planned = rand() % 1000 < 5;
 	if (p.err.planned) {
 		p.err.planned_type =
 			rand() % 2 == 0 ? INT_EXC_DIV_ZERO : INT_EXC_MEM;
@@ -75,7 +88,7 @@ struct Pcb create_user_pcb(struct Simulator *s, const char *name, int mem_kb,
 
 void create_random_processes(struct Simulator *s)
 {
-	for (int i = 0; i < RANDOM_PROCESS_COUNT; i++) {
+	for (int i = 0; i < s->random_process_count; i++) {
 		struct Pcb *p = malloc(sizeof(*p));
 		char name[16];
 		int memory = (24 + rand() % 169) * 1024;
@@ -154,8 +167,6 @@ void demo(struct Simulator *s)
 		p->sched.priority = demos[i].priority;
 		p->sched.remaining_quantum = s->quantum;
 		
-		p->cpu_ctx.stack_pointer = 0x1000 + p->pid * 16;
-		
 		p->io.has_io = demos[i].has_io;
 		p->io.start_time = demos[i].io_start;
 		if (p->io.has_io) {
@@ -164,7 +175,8 @@ void demo(struct Simulator *s)
 			p->io.device = demos[i].device;
 		}
 		
-		p->interrupt.periodic_target = 2 + i % 5;
+		p->interrupt.periodic_target =
+			interrupt_target_for(p->mem.required_kb, p->sched.burst_time);
 		p->interrupt.next_cpu_time =
 			p->sched.burst_time / (p->interrupt.periodic_target + 1.0);
 		

@@ -1,4 +1,4 @@
-#include "runtime.h"
+#include "simulator.h"
 
 #include "gantt.h"
 #include "memory.h"
@@ -21,6 +21,7 @@ struct Simulator simulator_init(void)
 	s.switch_cost = 0.5;
 	s.sim_speed = 5;
 	s.next_pid = RESERVED_PID_COUNT;
+	s.random_process_count = 5;
 	s.system_q = init_queue();
 	s.created_processes = init_queue();
 	s.job_q = init_queue();

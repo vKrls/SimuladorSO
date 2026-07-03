@@ -12,33 +12,36 @@
 
 void tick_background(struct Simulator *s, double delta)
 {
-	int i;
-
 	accumulate_queue_time(&s->ready_q, delta, 0);
+
 	if (s->next_pcb != NULL)
 		s->next_pcb->sched.ready_time += delta;
-	for (i = 0; i < IO_DEVICE_COUNT; i++) {
+	
+	for (int i = 0; i < IO_DEVICE_COUNT; i++) {
 		struct Node *node;
+	
 		accumulate_queue_time(&s->device_q[i], delta, 1);
+	
 		for (node = s->device_q[i].head; node != NULL; node = node->next)
 			if (!node->pcb->resident)
 				node->pcb->sched.nonresident_time += delta;
 	}
+
 	accumulate_queue_time(&s->nonresident_q, delta, 2);
 	tick_device_queues(s, delta);
 }
 
 bool simulation_finished(struct Simulator *s)
 {
-	int i;
-
 	if (!q_empty(&s->created_processes) || !q_empty(&s->job_q) ||
 	    !q_empty(&s->ready_q) || !q_empty(&s->nonresident_q) ||
 	    s->running != NULL || s->next_pcb != NULL)
 		return false;
-	for (i = 0; i < IO_DEVICE_COUNT; i++)
+
+	for (int i = 0; i < IO_DEVICE_COUNT; i++)
 		if (!q_empty(&s->device_q[i]))
 			return false;
+
 	return s->user_process_count > 0;
 }
 
@@ -68,35 +71,48 @@ void main_loop(struct Simulator *s)
 
 	if (s->next_pcb != NULL) {
 		double delta = s->switch_remaining < TICK
-			? s->switch_remaining : TICK;
+			     ? s->switch_remaining : TICK;
+		
 		if (delta <= TIME_EPSILON) {
 			dispatch(s);
 		} else {
 			update_gantt_interval(s, GANTT_CONTEXT_SWITCH, NULL, delta);
+
 			s->current_time += delta;
 			s->switch_remaining -= delta;
 			s->context_switch_time += delta;
+			
 			tick_background(s, delta);
+			
 			if (s->switch_remaining <= TIME_EPSILON)
 				dispatch(s);
+
 			send_data(s, false);
+			
 			return;
 		}
 	}
 
 	if (s->running == NULL && !q_empty(&s->ready_q)) {
 		begin_context_switch(s);
+
 		if (s->next_pcb != NULL) {
 			double delta = s->switch_remaining < TICK
-				? s->switch_remaining : TICK;
+				     ? s->switch_remaining : TICK;
+
 			update_gantt_interval(s, GANTT_CONTEXT_SWITCH, NULL, delta);
+
 			s->current_time += delta;
 			s->switch_remaining -= delta;
 			s->context_switch_time += delta;
+
 			tick_background(s, delta);
+			
 			if (s->switch_remaining <= TIME_EPSILON)
 				dispatch(s);
+
 			send_data(s, false);
+
 			return;
 		}
 	}
@@ -107,6 +123,7 @@ void main_loop(struct Simulator *s)
 		s->idle_time += TICK;
 		tick_background(s, TICK);
 		send_data(s, false);
+
 		return;
 	}
 

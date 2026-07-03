@@ -2,37 +2,183 @@
 
 #include <stdlib.h>
 
+static int max_int(int a, int b)
+{
+	return a > b ? a : b;
+}
+
+static int min_int(int a, int b)
+{
+	return a < b ? a : b;
+}
+
+static void set_segment(struct ProcessSegment *segment, enum SegmentType type,
+			int start_block, int assigned_blocks, int required_kb)
+{
+	int capacity_kb = assigned_blocks * BLOCK_SIZE_KB;
+
+	segment->type = type;
+	segment->assigned_blocks = assigned_blocks;
+	segment->required_kb = min_int(required_kb, capacity_kb);
+	segment->waste_kb = capacity_kb - segment->required_kb;
+	segment->start_block = start_block;
+	segment->limit_block = start_block + assigned_blocks;
+}
+
+static int segment_required_kb(struct MemoryData *mem, int percent,
+			       int assigned_blocks)
+{
+	if (assigned_blocks <= 0)
+		return 0;
+	return max_int(1, mem->required_kb * percent / 100);
+}
+
+static struct ProcessSegment *find_segment(struct MemoryData *mem,
+					   enum SegmentType type)
+{
+	int i;
+
+	for (i = 0; i < mem->segment_count; i++)
+		if (mem->segments[i].type == type)
+			return &mem->segments[i];
+	return NULL;
+}
+
 struct MemoryBlockList mem_init(void)
 {
 	struct MemoryBlockList m = {0};
-	struct MemoryBlock *os = malloc(sizeof(*os));
 	struct MemoryBlock *free_block = malloc(sizeof(*free_block));
-	int os_blocks = OS_RESERVED_KB / BLOCK_SIZE_KB;
 
-	if (os == NULL || free_block == NULL) {
-		free(os);
-		free(free_block);
+	if (free_block == NULL)
 		return m;
-	}
 
-	os->start = 0;
-	os->limit = os_blocks;
-	os->length = os_blocks;
-	os->owner = NULL;
-	os->next = free_block;
-
-	free_block->start = os_blocks;
+	free_block->start = 0;
 	free_block->limit = TOTAL_BLOCKS;
-	free_block->length = TOTAL_BLOCKS - os_blocks;
+	free_block->length = TOTAL_BLOCKS;
 	free_block->owner = NULL;
 	free_block->next = NULL;
 
-	m.cont = 2;
+	m.cont = 1;
 	m.free = free_block->length;
-	m.head = os;
+	m.head = free_block;
 	m.tail = free_block;
 	m.max = free_block;
 	return m;
+}
+
+void memory_clear_segments(struct MemoryData *mem)
+{
+	int i;
+
+	if (mem == NULL)
+		return;
+	for (i = 0; i < PROCESS_SEGMENT_COUNT; i++) {
+		mem->segments[i].type = (enum SegmentType)i;
+		mem->segments[i].required_kb = 0;
+		mem->segments[i].assigned_blocks = 0;
+		mem->segments[i].waste_kb = 0;
+		mem->segments[i].start_block = -1;
+		mem->segments[i].limit_block = -1;
+	}
+	mem->segment_count = 0;
+}
+
+void memory_layout_segments(struct Pcb *p)
+{
+	struct MemoryData *mem;
+	int blocks[PROCESS_SEGMENT_COUNT] = {0};
+	int required[PROCESS_SEGMENT_COUNT] = {0};
+	int cursor;
+	int total;
+	int stack_start;
+
+	if (p == NULL)
+		return;
+	mem = &p->mem;
+	memory_clear_segments(mem);
+	if (mem->block == NULL || mem->assigned_blocks <= 0)
+		return;
+
+	total = mem->assigned_blocks;
+	if (total < PROCESS_SEGMENT_COUNT) {
+		int i;
+		for (i = 0; i < total; i++)
+			blocks[i] = 1;
+	} else {
+		blocks[SEG_TEXT] = max_int(1, total * 30 / 100);
+		blocks[SEG_DATA] = max_int(1, total * 20 / 100);
+		blocks[SEG_BSS] = max_int(1, total * 10 / 100);
+		blocks[SEG_HEAP] = max_int(1, total * 10 / 100);
+		blocks[SEG_STACK] = max_int(1, total * 10 / 100);
+	}
+	required[SEG_TEXT] = segment_required_kb(mem, 30, blocks[SEG_TEXT]);
+	required[SEG_DATA] = segment_required_kb(mem, 20, blocks[SEG_DATA]);
+	required[SEG_BSS] = segment_required_kb(mem, 10, blocks[SEG_BSS]);
+	required[SEG_HEAP] = segment_required_kb(mem, 10, blocks[SEG_HEAP]);
+	required[SEG_STACK] = segment_required_kb(mem, 10, blocks[SEG_STACK]);
+
+	cursor = mem->start;
+	set_segment(&mem->segments[SEG_TEXT], SEG_TEXT, cursor,
+		    blocks[SEG_TEXT], required[SEG_TEXT]);
+	cursor = mem->segments[SEG_TEXT].limit_block;
+	set_segment(&mem->segments[SEG_DATA], SEG_DATA, cursor,
+		    blocks[SEG_DATA], required[SEG_DATA]);
+	cursor = mem->segments[SEG_DATA].limit_block;
+	set_segment(&mem->segments[SEG_BSS], SEG_BSS, cursor,
+		    blocks[SEG_BSS], required[SEG_BSS]);
+	cursor = mem->segments[SEG_BSS].limit_block;
+	set_segment(&mem->segments[SEG_HEAP], SEG_HEAP, cursor,
+		    blocks[SEG_HEAP], required[SEG_HEAP]);
+
+	stack_start = mem->limit - blocks[SEG_STACK];
+	if (stack_start < mem->segments[SEG_HEAP].limit_block)
+		stack_start = mem->segments[SEG_HEAP].limit_block;
+	set_segment(&mem->segments[SEG_STACK], SEG_STACK,
+		    stack_start, mem->limit - stack_start, required[SEG_STACK]);
+
+	mem->segment_count = PROCESS_SEGMENT_COUNT;
+	p->cpu_ctx.stack_pointer = mem->segments[SEG_STACK].limit_block;
+}
+
+bool memory_grow_heap(struct Pcb *p, int blocks)
+{
+	struct ProcessSegment *heap;
+	struct ProcessSegment *stack;
+
+	if (p == NULL || blocks <= 0 || p->mem.segment_count == 0)
+		return false;
+	heap = find_segment(&p->mem, SEG_HEAP);
+	stack = find_segment(&p->mem, SEG_STACK);
+	if (heap == NULL || stack == NULL ||
+	    heap->limit_block + blocks > stack->start_block)
+		return false;
+	heap->limit_block += blocks;
+	heap->assigned_blocks += blocks;
+	heap->required_kb += blocks * BLOCK_SIZE_KB;
+	heap->waste_kb = heap->assigned_blocks * BLOCK_SIZE_KB -
+			 heap->required_kb;
+	return true;
+}
+
+bool memory_grow_stack(struct Pcb *p, int blocks)
+{
+	struct ProcessSegment *heap;
+	struct ProcessSegment *stack;
+
+	if (p == NULL || blocks <= 0 || p->mem.segment_count == 0)
+		return false;
+	heap = find_segment(&p->mem, SEG_HEAP);
+	stack = find_segment(&p->mem, SEG_STACK);
+	if (heap == NULL || stack == NULL ||
+	    stack->start_block - blocks < heap->limit_block)
+		return false;
+	stack->start_block -= blocks;
+	stack->assigned_blocks += blocks;
+	stack->required_kb += blocks * BLOCK_SIZE_KB;
+	stack->waste_kb = stack->assigned_blocks * BLOCK_SIZE_KB -
+			  stack->required_kb;
+	p->cpu_ctx.stack_pointer = stack->start_block;
+	return true;
 }
 
 void update_max_mem(struct MemoryBlockList *m)
@@ -88,6 +234,7 @@ static bool allocate_block(struct MemoryBlockList *m, struct MemoryBlock *free_b
 	p->mem.assigned_blocks = blocks_needed;
 	p->mem.waste_kb = blocks_needed * BLOCK_SIZE_KB - p->mem.required_kb;
 	p->resident = true;
+	memory_layout_segments(p);
 	m->free -= blocks_needed;
 	update_max_mem(m);
 	return true;
@@ -167,6 +314,7 @@ void kfree(struct MemoryBlockList *m, struct Pcb *p)
 	p->mem.limit = -1;
 	p->mem.assigned_blocks = 0;
 	p->mem.waste_kb = 0;
+	memory_clear_segments(&p->mem);
 	p->resident = false;
 	kmerge(m);
 }

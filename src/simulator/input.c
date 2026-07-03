@@ -75,26 +75,41 @@ void process_stdin(struct Simulator *s, char *line)
 	}
 
 	if (strncmp(line, "RANDOM", 6) == 0) {
+		int count;
+
+		if (sscanf(line, "RANDOM %d", &count) != 1 ||
+		    count < 1 || count > 20) {
+			log_event(s, "ERROR", "RANDOM inválido: %s", line);
+			return;
+		}
+		s->random_process_count = count;
 		create_random_processes(s);
+		log_event(s, "SIMULATOR", "%d procesos aleatorios cargados.", count);
 		send_data(s, true);
 		return;
 	}
 
 	if (strncmp(line, "SPEED", 5) == 0) {
 		int speed;
+
 		if (sscanf(line, "SPEED %d", &speed) != 1 ||
 		    speed < 1 || speed > 100) {
 			log_event(s, "ERROR", "SPEED inválido: %s", line);
 			return;
 		}
+
 		s->sim_speed = speed;
+		log_event(s, "CONFIG", "Velocidad de simulación=%dx.", s->sim_speed);
+
 		return;
 	}
 
 	if (strncmp(line, "RUN", 3) == 0) {
 		s->state = SIM_RUN;
+
 		log_event(s, "SIMULATOR", "Simulación iniciada.");
 		send_data(s, true);
+
 		return;
 	}
 	if (strncmp(line, "PAUSE", 5) == 0) {
@@ -126,5 +141,5 @@ bool stdin_has_data(void)
 	fd.fd = STDIN_FILENO;
 	fd.events = POLLIN;
 	return poll(&fd, 1, 0) > 0 &&
-	       (fd.revents & (POLLIN | POLLHUP | POLLERR | POLLNVAL));
+		   (fd.revents & (POLLIN | POLLHUP | POLLERR | POLLNVAL));
 }

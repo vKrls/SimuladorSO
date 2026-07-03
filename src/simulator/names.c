@@ -72,6 +72,18 @@ const char *gantt_type_name(enum GanttType type)
 	}
 }
 
+const char *segment_type_name(enum SegmentType type)
+{
+	switch (type) {
+	case SEG_TEXT: return "TEXT";
+	case SEG_DATA: return "DATA";
+	case SEG_BSS: return "BSS";
+	case SEG_HEAP: return "HEAP";
+	case SEG_STACK: return "STACK";
+	default: return "UNKNOWN";
+	}
+}
+
 void log_event(struct Simulator *s, const char *category, const char *format, ...)
 {
 	va_list args;

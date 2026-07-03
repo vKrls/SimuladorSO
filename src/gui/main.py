@@ -3,8 +3,8 @@ import sys
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
 
-from gui.main_window import MainWindow
-from gui.simulation_client import SimulationClient
+from gui.windows.main_window import MainWindow
+from gui.services.simulation_service import SimulationService
 from gui.theme import APP_STYLESHEET
 
 
@@ -24,11 +24,11 @@ def apply_base_palette(app: QApplication) -> None:
     app.setStyleSheet(APP_STYLESHEET)
 
 
-client = SimulationClient()
+service = SimulationService()
 app = QApplication(sys.argv)
 apply_base_palette(app)
 
-window = MainWindow(client)
+window = MainWindow(service)
 window.show()
 
 app.exec()
