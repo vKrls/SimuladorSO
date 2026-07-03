@@ -4,12 +4,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import QGraphicsDropShadowEffect, QLabel, QSizePolicy, QWidget
 
-
-PROCESS_COLORS = [
-    "#00d4ff", "#ff6b35", "#7bc67e", "#f7c59f",
-    "#c77dff", "#ff4d6d", "#48cae4", "#f4a261",
-    "#06d6a0", "#ffd60a", "#e07a5f", "#81b29a",
-]
+from gui.domain.models import PROCESS_COLORS
 
 STATE_COLORS = {
     "NEW": "#546e7a",

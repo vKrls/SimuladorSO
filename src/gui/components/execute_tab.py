@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui.components.visual_widgets import GanttWidget, GlowLabel, MemoryMapWidget, STATE_COLORS, STATE_LABELS
-from gui.services.simulation_service import SimulationResult, UiProcess
+from gui.domain.models import SimulationResult, UiProcess
 
 
 class Execute_Tab(QTabWidget):

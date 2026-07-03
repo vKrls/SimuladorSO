@@ -6,7 +6,8 @@ from PySide6.QtWidgets import QVBoxLayout, QWidget
 from gui.components.center import Center
 from gui.components.footer import Footer
 from gui.components.header import Header
-from gui.services.simulation_service import SimulationService, UiProcess
+from gui.domain.models import UiProcess
+from gui.services.simulation_service import SimulationService
 
 
 class AlgorithmWindow(QWidget):

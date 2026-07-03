@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QGroupBox, QHBoxLayout, QLabel, QProgressBar, QScrollArea, QVBoxLayout, QWidget
 
 from gui.components.visual_widgets import StateChip
-from gui.services.simulation_service import UiProcess
+from gui.domain.models import UiProcess
 
 
 class Process_Queue(QGroupBox):
@@ -49,9 +49,10 @@ class Process_Queue(QGroupBox):
 
     def _process_card(self, process: UiProcess) -> QFrame:
         widget = QFrame()
+        widget.setObjectName("processCard")
         widget.setFixedHeight(128)
         widget.setStyleSheet(f"""
-            QFrame {{
+            QFrame#processCard {{
                 background: #0d1117;
                 border: 1px solid {process.color}55;
                 border-left: 3px solid {process.color};
@@ -81,9 +82,9 @@ class Process_Queue(QGroupBox):
     def _mid_card(self, process: UiProcess) -> QWidget:
         fields = [
             f"Burst: {self._fmt(process.burst_time)}",
-            f"Mem: {process.memory / 1024:.0f} MB",
             f"Rest: {self._fmt(process.remaining_time or 0)}",
-            f"PC: 0x{process.program_counter:X}",
+            f"Mem KB: {process.memory}",
+            f"In Mem: {self._yes_no(process.resident)}",
         ]
         return self._field_row(fields)
 
@@ -104,12 +105,9 @@ class Process_Queue(QGroupBox):
             f"Lleg: {self._fmt(process.arrival_time)}",
             f"Inicio: {self._dash(process.start_time)}",
             f"TAT: {self._fmt(process.turnaround_time)}",
-            f"Swap: {process.swap_count}",
+            f"PC: 0x{process.program_counter:X}",
+            f"SP: 0x{process.stack_pointer:X}",
         ]
-        if self.alg == "pr":
-            fields.append(f"Pr: {process.priority}")
-        if self.alg == "rr":
-            fields.append(f"Q: {self._fmt(process.quantum)}")
         return self._field_row(fields)
 
     def _field_row(self, fields: list[str]) -> QWidget:
@@ -122,23 +120,17 @@ class Process_Queue(QGroupBox):
         layout.addStretch()
         return widget
 
-    def _field_chip(self, text: str) -> QFrame:
-        frame = QFrame()
-        frame.setStyleSheet("""
-            QFrame {
-                background: rgba(33, 150, 243, 0.12);
-                border: 1px solid rgba(33, 150, 243, 0.30);
-                border-radius: 4px;
-            }
-            QLabel {
-                color: #8b949e;
-                font-size: 9px;
-            }
+    def _field_chip(self, text: str) -> QLabel:
+        label = QLabel(text)
+        label.setStyleSheet("""
+            background: rgba(33, 150, 243, 0.12);
+            border: 1px solid rgba(33, 150, 243, 0.30);
+            border-radius: 4px;
+            color: #8b949e;
+            font-size: 9px;
+            padding: 2px 6px;
         """)
-        layout = QHBoxLayout(frame)
-        layout.setContentsMargins(6, 2, 6, 2)
-        layout.addWidget(QLabel(text))
-        return frame
+        return label
 
     def add_process_card(self, process: UiProcess) -> None:
         self.layout_process_queue.insertWidget(self.layout_process_queue.count() - 1, self._process_card(process))
@@ -170,3 +162,6 @@ class Process_Queue(QGroupBox):
         if value is None:
             return "--"
         return self._fmt(value)
+
+    def _yes_no(self, value: bool) -> str:
+        return "Sí" if value else "No"

@@ -85,8 +85,13 @@ static void send_process_segments(struct Pcb *p)
 	putchar(']');
 }
 
-static void send_pcb(struct Pcb *p)
+static void send_pcb(struct Simulator *s, struct Pcb *p)
 {
+	struct CpuContext cpu = p->cpu_ctx;
+
+	if (s != NULL && p == s->running)
+		cpu = s->cpu_ctx;
+
 	printf("{\"pid\":%d,\"name\":", p->pid);
 	send_json_string(p->name);
 	printf(",\"state\":");
@@ -105,7 +110,7 @@ static void send_pcb(struct Pcb *p)
 	       "\"block_address\":\"%p\",\"segments\":",
 	       p->is_system ? "true" : "false", p->resident ? "true" : "false",
 	       p->swap_count, p->last_swap_out, p->last_swap_in,
-	       p->cpu_ctx.program_counter, p->cpu_ctx.stack_pointer,
+	       cpu.program_counter, cpu.stack_pointer,
 	       p->sched.arrival_time, p->sched.burst_time,
 	       p->sched.remaining_time, p->sched.start_time,
 	       p->sched.finish_time, p->sched.turnaround_time, p->sched.response_time,
@@ -143,7 +148,7 @@ static void send_queue_processes(struct Queue *q, bool *first)
 	for (node = q->head; node != NULL; node = node->next) {
 		if (!*first)
 			putchar(',');
-		send_pcb(node->pcb);
+		send_pcb(NULL, node->pcb);
 		*first = false;
 	}
 }
@@ -165,13 +170,13 @@ static void send_all_processes(struct Simulator *s)
 	if (s->running != NULL) {
 		if (!first)
 			putchar(',');
-		send_pcb(s->running);
+		send_pcb(s, s->running);
 		first = false;
 	}
 	if (s->next_pcb != NULL) {
 		if (!first)
 			putchar(',');
-		send_pcb(s->next_pcb);
+		send_pcb(NULL, s->next_pcb);
 	}
 	putchar(']');
 }

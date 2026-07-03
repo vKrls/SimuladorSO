@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from gui.services.simulation_service import ProcessData
+from gui.domain.models import ProcessData
 
 
 class Process_Input(QGroupBox):
