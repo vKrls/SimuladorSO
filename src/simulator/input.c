@@ -60,22 +60,6 @@ void process_stdin(struct Simulator *s, char *line)
 		return;
 	}
 
-	if (strncmp(line, "CONFIG", 6) == 0) {
-		int sched;
-		int memory;
-		double quantum;
-		double cost;
-		int parsed = sscanf(line, "CONFIG %d %d %lf %lf",
-				    &sched, &memory, &quantum, &cost);
-		if (parsed != 4 ||
-		    !valid_config(sched, memory, quantum, cost, s->sim_speed)) {
-			log_event(s, "ERROR", "CONFIG inválido: %s", line);
-			return;
-		}
-		apply_config(s, sched, memory, quantum, cost, s->sim_speed);
-		return;
-	}
-
 	if (strncmp(line, "ADD", 3) == 0) {
 		char name[16];
 		int mem_kb;

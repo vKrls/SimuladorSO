@@ -10,6 +10,8 @@ from gui.services.simulation_service import SimulationService
 
 
 class Center(QWidget):
+    LEFT_PANEL_WIDTH = 480
+
     def __init__(self, client: SimulationService, alg: str = ""):
         super().__init__()
         self.client = client
@@ -19,9 +21,11 @@ class Center(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setHandleWidth(2)
-        splitter.addWidget(self._left())
+        left = self._left()
+        left.setMinimumWidth(self.LEFT_PANEL_WIDTH)
+        splitter.addWidget(left)
         splitter.addWidget(self._right())
-        splitter.setSizes([420, 900])
+        splitter.setSizes([self.LEFT_PANEL_WIDTH, 900])
         layout.addWidget(splitter)
 
     def _left(self) -> QWidget:

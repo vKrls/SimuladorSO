@@ -8,9 +8,15 @@ from gui.domain.models import UiProcess
 
 
 class Process_Queue(QGroupBox):
+    CARD_WIDTH = 444
+    CARD_HEIGHT = 128
+    TOP_CHIP_WIDTH = 98
+    BOTTOM_CHIP_WIDTH = 76
+
     def __init__(self, alg: str = ""):
         super().__init__("COLA DE PROCESOS")
         self.alg = alg
+        self.setMinimumWidth(self.CARD_WIDTH + 24)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 10, 8, 8)
@@ -50,7 +56,7 @@ class Process_Queue(QGroupBox):
     def _process_card(self, process: UiProcess) -> QFrame:
         widget = QFrame()
         widget.setObjectName("processCard")
-        widget.setFixedHeight(128)
+        widget.setFixedSize(self.CARD_WIDTH, self.CARD_HEIGHT)
         widget.setStyleSheet(f"""
             QFrame#processCard {{
                 background: #0d1117;
@@ -70,6 +76,7 @@ class Process_Queue(QGroupBox):
 
     def _top_card(self, process: UiProcess) -> QWidget:
         widget = QWidget()
+        widget.setFixedHeight(22)
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
         title = QLabel(f"[PID {process.pid}] {process.name}")
@@ -86,7 +93,7 @@ class Process_Queue(QGroupBox):
             f"Mem KB: {process.memory}",
             f"In Mem: {self._yes_no(process.resident)}",
         ]
-        return self._field_row(fields)
+        return self._field_row(fields, self.TOP_CHIP_WIDTH)
 
     def _bar_card(self, process: UiProcess) -> QProgressBar:
         progress_bar = QProgressBar()
@@ -108,20 +115,24 @@ class Process_Queue(QGroupBox):
             f"PC: 0x{process.program_counter:X}",
             f"SP: 0x{process.stack_pointer:X}",
         ]
-        return self._field_row(fields)
+        return self._field_row(fields, self.BOTTOM_CHIP_WIDTH)
 
-    def _field_row(self, fields: list[str]) -> QWidget:
+    def _field_row(self, fields: list[str], chip_width: int) -> QWidget:
         widget = QWidget()
+        widget.setFixedHeight(22)
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
         for field in fields:
-            layout.addWidget(self._field_chip(field))
+            layout.addWidget(self._field_chip(field, chip_width))
         layout.addStretch()
         return widget
 
-    def _field_chip(self, text: str) -> QLabel:
+    def _field_chip(self, text: str, width: int) -> QLabel:
         label = QLabel(text)
+        label.setFixedWidth(width)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setTextFormat(Qt.TextFormat.PlainText)
         label.setStyleSheet("""
             background: rgba(33, 150, 243, 0.12);
             border: 1px solid rgba(33, 150, 243, 0.30);
