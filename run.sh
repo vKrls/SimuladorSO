@@ -2,12 +2,13 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-VENV_DIR="/Users/vkrls/.venvs/SimuladorSO"
+VENV_DIR="$ROOT_DIR/.venv"
+SYSTEM_PYTHON=${SYSTEM_PYTHON:-python3}
 PYTHON=${PYTHON:-"$VENV_DIR/bin/python"}
 
 if [ ! -x "$PYTHON" ]; then
-	printf 'No se encontró el Python del venv: %s\n' "$PYTHON" >&2
-	exit 1
+	printf 'Creando venv en %s\n' "$VENV_DIR"
+	"$SYSTEM_PYTHON" -m venv "$VENV_DIR"
 fi
 
 PYTHONPATH="$ROOT_DIR/src${PYTHONPATH:+:$PYTHONPATH}" \
