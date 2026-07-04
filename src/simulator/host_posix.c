@@ -1,14 +1,22 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include "host.h"
 
 #ifndef _WIN32
 
+#include <errno.h>
 #include <poll.h>
 #include <time.h>
 #include <unistd.h>
 
 void sleep_us(unsigned int microseconds)
 {
-	usleep((useconds_t)microseconds);
+	struct timespec delay;
+
+	delay.tv_sec = microseconds / 1000000U;
+	delay.tv_nsec = (long)(microseconds % 1000000U) * 1000L;
+	while (nanosleep(&delay, &delay) == -1 && errno == EINTR)
+		;
 }
 
 bool stdin_has_data(void)

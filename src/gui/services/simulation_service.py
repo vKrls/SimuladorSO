@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -12,10 +13,26 @@ from gui.state.simulation_session_store import SimulationSessionStore
 from gui.state.simulation_state_reducer import SimulationStateReducer
 
 
+def resolve_c_executable(build_dir: Path, explicit: Path | None = None) -> Path:
+    if explicit is not None:
+        return explicit
+
+    is_windows = sys.platform.startswith("win")
+    candidates = [
+        build_dir / ("simulator.exe" if is_windows else "simulator"),
+        build_dir / ("main.exe" if is_windows else "main"),
+    ]
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
 class SimulationService:
     def __init__(self, c_executable: Path | None = None):
         project_root = Path(__file__).resolve().parents[3]
-        executable = c_executable or project_root / "build" / "simulator"
+        executable = resolve_c_executable(project_root / "build", c_executable)
         self.gateway = CProcessGateway(executable)
         self.store = SimulationSessionStore()
         self.commands = SimulatorCommandSerializer()
