@@ -2,8 +2,8 @@
 
 #include "names.h"
 #include "process.h"
+#include "process_table.h"
 #include "protocol.h"
-#include "queue.h"
 
 #include <poll.h>
 #include <stdio.h>
@@ -66,6 +66,7 @@ void process_stdin(struct Simulator *s, char *line)
 		double burst;
 		double arrival;
 		int priority;
+		struct Pcb pcb;
 		struct Pcb *p;
 		int parsed = sscanf(line, "ADD %15s %d %lf %lf %d",
 				    name, &mem_kb, &burst, &arrival, &priority);
@@ -74,13 +75,13 @@ void process_stdin(struct Simulator *s, char *line)
 			log_event(s, "ERROR", "ADD inválido: %s", line);
 			return;
 		}
-		p = malloc(sizeof(*p));
+		pcb = create_user_pcb(s, name, mem_kb, burst, arrival, priority);
+		p = process_table_add(&s->process_table, pcb);
 		if (p == NULL) {
 			fprintf(stderr, "OOM al crear proceso.\n");
 			return;
 		}
-		*p = create_user_pcb(s, name, mem_kb, burst, arrival, priority);
-		enqueue(&s->created_processes, p);
+		s->user_process_count++;
 		log_event(s, "PROCESS", "%s(%d) creado.", p->name, p->pid);
 		send_data(s, true);
 		return;

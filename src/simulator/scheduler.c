@@ -3,21 +3,24 @@
 #include "memory.h"
 #include "names.h"
 #include "process.h"
+#include "process_table.h"
 #include "queue.h"
 
 #include <stdio.h>
 
 void process_arrival(struct Simulator *s)
 {
-	struct Node *node = s->created_processes.head;
+	struct ProcessTableNode *node;
 
-	while (node != NULL) {
-		struct Pcb *p = node->pcb;
-		node = node->next;
+	for (node = s->process_table.head; node != NULL; node = node->next) {
+		struct Pcb *p = &node->pcb;
+
 		if (p->sched.arrival_time <= s->current_time + TIME_EPSILON) {
-			dequeue_pcb(&s->created_processes, p);
+			if (p->is_system || p->state != NONE)
+				continue;
+			set_process_state(s, p, NEW, "arrival time alcanzado");
 			enqueue(&s->job_q, p);
-			log_event(s, "QUEUE", "%s(%d): created_processes -> job_q.",
+			log_event(s, "QUEUE", "%s(%d): process_table -> job_q.",
 				  p->name, p->pid);
 		}
 	}

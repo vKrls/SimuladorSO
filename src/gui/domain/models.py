@@ -37,7 +37,7 @@ class UiProcess:
     arrival_time: float
     priority: int = 0
     quantum: float = 0.0
-    state: str = "NEW"
+    state: str = "NONE"
     remaining_time: float | None = None
     assigned_blocks: int = 0
     waste_kb: int = 0
@@ -66,8 +66,6 @@ class UiProcess:
     cpu_time: float = 0.0
     context_switches: int = 0
     swap_count: int = 0
-    last_swap_out: float | None = None
-    last_swap_in: float | None = None
     error_code: str = ""
     error_description: str = ""
     error_time: float | None = None

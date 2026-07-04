@@ -2,6 +2,7 @@
 
 #include "gantt.h"
 #include "names.h"
+#include "process_table.h"
 #include "queue.h"
 
 #include <stdio.h>
@@ -97,7 +98,6 @@ static void send_pcb(struct Simulator *s, struct Pcb *p)
 	printf(",\"state\":");
 	send_json_string(process_state_name(p->state));
 	printf(",\"is_system\":%s,\"resident\":%s,\"swap_count\":%d,"
-	       "\"last_swap_out\":%.3f,\"last_swap_in\":%.3f,"
 	       "\"cpu\":{\"program_counter\":%d,\"stack_pointer\":%d},"
 	       "\"scheduler\":{\"arrival_time\":%.3f,\"burst_time\":%.3f,"
 	       "\"remaining_time\":%.3f,\"start_time\":%.3f,\"finish_time\":%.3f,"
@@ -109,8 +109,7 @@ static void send_pcb(struct Simulator *s, struct Pcb *p)
 	       "\"waste_kb\":%d,\"start_block\":%d,\"limit_block\":%d,"
 	       "\"block_address\":\"%p\",\"segments\":",
 	       p->is_system ? "true" : "false", p->resident ? "true" : "false",
-	       p->swap_count, p->last_swap_out, p->last_swap_in,
-	       cpu.program_counter, cpu.stack_pointer,
+	       p->swap_count, cpu.program_counter, cpu.stack_pointer,
 	       p->sched.arrival_time, p->sched.burst_time,
 	       p->sched.remaining_time, p->sched.start_time,
 	       p->sched.finish_time, p->sched.turnaround_time, p->sched.response_time,
@@ -142,41 +141,17 @@ static void send_pcb(struct Simulator *s, struct Pcb *p)
 	printf("}}");
 }
 
-static void send_queue_processes(struct Queue *q, bool *first)
-{
-	struct Node *node;
-	for (node = q->head; node != NULL; node = node->next) {
-		if (!*first)
-			putchar(',');
-		send_pcb(NULL, node->pcb);
-		*first = false;
-	}
-}
-
 static void send_all_processes(struct Simulator *s)
 {
 	bool first = true;
-	int i;
+	struct ProcessTableNode *node;
 
 	putchar('[');
-	send_queue_processes(&s->system_q, &first);
-	send_queue_processes(&s->created_processes, &first);
-	send_queue_processes(&s->job_q, &first);
-	send_queue_processes(&s->ready_q, &first);
-	for (i = 0; i < IO_DEVICE_COUNT; i++)
-		send_queue_processes(&s->device_q[i], &first);
-	send_queue_processes(&s->nonresident_q, &first);
-	send_queue_processes(&s->finished_q, &first);
-	if (s->running != NULL) {
+	for (node = s->process_table.head; node != NULL; node = node->next) {
 		if (!first)
 			putchar(',');
-		send_pcb(s, s->running);
+		send_pcb(s, &node->pcb);
 		first = false;
-	}
-	if (s->next_pcb != NULL) {
-		if (!first)
-			putchar(',');
-		send_pcb(NULL, s->next_pcb);
 	}
 	putchar(']');
 }
@@ -200,9 +175,7 @@ static void send_queues(struct Simulator *s)
 {
 	int i;
 
-	printf("\"queues\":{\"created\":");
-	send_pid_queue(&s->created_processes);
-	printf(",\"job\":");
+	printf("\"queues\":{\"job\":");
 	send_pid_queue(&s->job_q);
 	printf(",\"ready\":");
 	send_pid_queue(&s->ready_q);

@@ -3,6 +3,7 @@
 #include "gantt.h"
 #include "memory.h"
 #include "process.h"
+#include "process_table.h"
 #include "queue.h"
 
 #include <stdlib.h>
@@ -22,8 +23,8 @@ struct Simulator simulator_init(void)
 	s.sim_speed = 5;
 	s.next_pid = RESERVED_PID_COUNT;
 	s.random_process_count = 5;
+	process_table_init(&s.process_table);
 	s.system_q = init_queue();
-	s.created_processes = init_queue();
 	s.job_q = init_queue();
 	s.ready_q = init_queue();
 	s.nonresident_q = init_queue();
@@ -40,12 +41,7 @@ void simulator_free(struct Simulator *s)
 {
 	int i;
 
-	if (s->running != NULL)
-		free(s->running);
-	if (s->next_pcb != NULL)
-		free(s->next_pcb);
 	q_free(&s->system_q);
-	q_free(&s->created_processes);
 	q_free(&s->job_q);
 	q_free(&s->ready_q);
 	for (i = 0; i < IO_DEVICE_COUNT; i++)
@@ -54,4 +50,5 @@ void simulator_free(struct Simulator *s)
 	q_free(&s->finished_q);
 	memory_free_all(&s->memory_list);
 	gantt_free(&s->gantt);
+	process_table_free(&s->process_table);
 }

@@ -73,7 +73,7 @@ void dequeue_pcb(struct Queue *q, struct Pcb *p)
 void q_free(struct Queue *q)
 {
 	while (!q_empty(q))
-		free(dequeue_head(q));
+		(void)dequeue_head(q);
 }
 
 void accumulate_queue_time(struct Queue *q, double delta, int kind)

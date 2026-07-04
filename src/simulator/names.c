@@ -6,6 +6,7 @@
 const char *process_state_name(enum ProcessState state)
 {
 	switch (state) {
+	case NONE: return "NONE";
 	case NEW: return "NEW";
 	case READY: return "READY";
 	case RUNNING: return "RUNNING";

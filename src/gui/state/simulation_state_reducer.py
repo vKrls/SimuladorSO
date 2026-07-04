@@ -71,11 +71,7 @@ class SimulationStateReducer:
         state["memory_map"] = self._build_memory_map(algorithm, state, store)
         if not state.get("stats"):
             state["stats"] = self._build_stats(algorithm, state, store)
-        if any(event.get("type") == "state" for event in events) or any(
-            event.get("type") == "queue"
-            and event.get("name") == "created_processes"
-            for event in events
-        ):
+        if any(event.get("type") == "state" for event in events):
             store.reset_random_process_count(algorithm)
         return state
 

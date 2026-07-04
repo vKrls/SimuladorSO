@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QGraphicsDropShadowEffect, QLabel, QSizePolicy, QW
 from gui.domain.models import PROCESS_COLORS
 
 STATE_COLORS = {
+    "NONE": "#6b7280",
     "NEW": "#546e7a",
     "READY": "#1565c0",
     "RUNNING": "#2e7d32",
@@ -15,6 +16,7 @@ STATE_COLORS = {
 }
 
 STATE_LABELS = {
+    "NONE": "FUERA SO",
     "NEW": "NUEVO",
     "READY": "LISTO",
     "RUNNING": "EJECUTANDO",
@@ -38,7 +40,7 @@ class GlowLabel(QLabel):
 
 
 class StateChip(QLabel):
-    def __init__(self, state: str = "NEW"):
+    def __init__(self, state: str = "NONE"):
         super().__init__()
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setFixedWidth(112)

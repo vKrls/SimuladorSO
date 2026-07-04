@@ -220,8 +220,8 @@ class Execute_Tab(QTabWidget):
             "Memoria", "Residente", "Burst", "Restante", "CPU", "Ready",
             "Bloqueado", "Fuera de RAM", "Llegada", "Inicio", "Fin", "TAT", "Resp.",
             "Interrup.", "Planificadas", "Historial interrupciones", "Dispositivo",
-            "I/O restante", "Cambios ctx", "Swaps", "Último swap-out",
-            "Último swap-in", "Error", "Momento error", "Prioridad",
+            "I/O restante", "Cambios ctx", "Swaps", "Error",
+            "Momento error", "Prioridad",
         ]
         self._configure_table(self.pcb_table, headers, stretch=False)
         layout.addWidget(self.pcb_table, 1)
@@ -522,8 +522,6 @@ class Execute_Tab(QTabWidget):
                 self._fmt(process.io_remaining),
                 process.context_switches,
                 process.swap_count,
-                self._dash(process.last_swap_out),
-                self._dash(process.last_swap_in),
                 (
                     f"{process.error_code}: {process.error_description}"
                     if process.error_code

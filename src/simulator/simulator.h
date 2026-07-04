@@ -54,6 +54,7 @@ enum SegmentType {
 };
 
 enum ProcessState {
+	NONE = -1,
 	NEW = 0,
 	READY = 1,
 	RUNNING = 2,
@@ -176,8 +177,6 @@ struct Pcb {
 	bool is_system;
 	bool resident;
 	int swap_count;
-	double last_swap_out;
-	double last_swap_in;
 	struct CpuContext cpu_ctx;
 	struct MemoryData mem;
 	struct SchedulerData sched;
@@ -195,6 +194,17 @@ struct Queue {
 	int cont;
 	struct Node *head;
 	struct Node *tail;
+};
+
+struct ProcessTableNode {
+	struct Pcb pcb;
+	struct ProcessTableNode *next;
+};
+
+struct ProcessTable {
+	int count;
+	struct ProcessTableNode *head;
+	struct ProcessTableNode *tail;
 };
 
 struct MemoryBlock {
@@ -241,8 +251,8 @@ struct Simulator {
 	double switch_cost;
 	double switch_remaining;
 
+	struct ProcessTable process_table;
 	struct Queue system_q;
-	struct Queue created_processes;
 	struct Queue job_q;
 	struct Queue ready_q;
 	struct Queue device_q[IO_DEVICE_COUNT];

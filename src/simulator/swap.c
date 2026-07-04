@@ -53,7 +53,6 @@ static bool swap_in_ready_processes(struct Simulator *s)
 		    !kmalloc(s, p))
 			continue;
 		dequeue_pcb(&s->nonresident_q, p);
-		p->last_swap_in = s->current_time;
 		enqueue(&s->ready_q, p);
 		s->swap_in_count++;
 		changed = true;
@@ -75,7 +74,6 @@ void mid_term_scheduler(struct Simulator *s)
 			break;
 		kfree(&s->memory_list, candidate);
 		candidate->swap_count++;
-		candidate->last_swap_out = s->current_time;
 		s->swap_out_count++;
 		log_event(s, "SWAPPER", "%s(%d) descargado; libera %d MB.",
 			  candidate->name, candidate->pid,

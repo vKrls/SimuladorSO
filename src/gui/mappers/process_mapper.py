@@ -47,8 +47,6 @@ class ProcessMapper:
         response = float(scheduler.get("response_time", 0.0))
         pid = int(pcb.get("pid", 0))
         block_size = int(snapshot.get("block_size_kb", 4) if snapshot else 4)
-        last_swap_out = float(pcb.get("last_swap_out", -1.0))
-        last_swap_in = float(pcb.get("last_swap_in", -1.0))
         error_time = float(error.get("occurred_at", -1.0))
 
         return UiProcess(
@@ -59,7 +57,7 @@ class ProcessMapper:
             arrival_time=float(scheduler.get("arrival_time", 0.0)),
             priority=int(scheduler.get("priority", 0)),
             quantum=float(snapshot.get("quantum", 0.0)),
-            state=str(pcb.get("state", "NEW")),
+            state=str(pcb.get("state", "NONE")),
             remaining_time=remaining,
             assigned_blocks=int(memory.get("assigned_blocks", 0)),
             waste_kb=int(memory.get("waste_kb", 0)),
@@ -88,8 +86,6 @@ class ProcessMapper:
             cpu_time=float(scheduler.get("cpu_time", 0.0)),
             context_switches=int(scheduler.get("context_switches", 0)),
             swap_count=int(pcb.get("swap_count", 0)),
-            last_swap_out=None if last_swap_out < 0 else last_swap_out,
-            last_swap_in=None if last_swap_in < 0 else last_swap_in,
             error_code=str(error.get("code", "")),
             error_description=str(error.get("description", "")),
             error_time=None if error_time < 0 else error_time,

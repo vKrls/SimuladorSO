@@ -6,6 +6,7 @@
 #include "io.h"
 #include "names.h"
 #include "protocol.h"
+#include "process_table.h"
 #include "queue.h"
 #include "scheduler.h"
 #include "swap.h"
@@ -33,7 +34,8 @@ void tick_background(struct Simulator *s, double delta)
 
 bool simulation_finished(struct Simulator *s)
 {
-	if (!q_empty(&s->created_processes) || !q_empty(&s->job_q) ||
+	if (process_table_has_pending_arrivals(&s->process_table) ||
+	    !q_empty(&s->job_q) ||
 	    !q_empty(&s->ready_q) || !q_empty(&s->nonresident_q) ||
 	    s->running != NULL || s->next_pcb != NULL)
 		return false;
