@@ -32,9 +32,11 @@ bool process_table_has_pending_arrivals(const struct ProcessTable *table)
 {
 	const struct ProcessTableNode *node;
 
-	for (node = table->head; node != NULL; node = node->next)
+	for (node = table->head; node != NULL; node = node->next) {
 		if (!node->pcb.is_system && node->pcb.state == NONE)
 			return true;
+	}
+	
 	return false;
 }
 

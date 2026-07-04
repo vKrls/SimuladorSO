@@ -39,8 +39,10 @@ static int interrupt_target_for(int mem_kb, double burst)
 
 	if (target < 5)
 		return 5;
+
 	if (target > 20)
 		return 20;
+
 	return target;
 }
 
@@ -64,7 +66,7 @@ struct Pcb create_user_pcb(struct Simulator *s, const char *name, int mem_kb,
 	p.io.has_io = rand() % 100 < 65;
 	p.io.start_time = burst * (0.15 + (rand() % 66) / 100.0);
 	if (p.io.has_io) {
-		p.io.duration = 0.5 + (rand() % 76) / 10.0;
+		p.io.duration = 5.0 + rand() % 16;
 		p.io.remaining_time = p.io.duration;
 		p.io.device = (enum IoDevice)(rand() % IO_DEVICE_COUNT);
 	}
@@ -81,6 +83,7 @@ struct Pcb create_user_pcb(struct Simulator *s, const char *name, int mem_kb,
 		p.err.trigger_cpu_time =
 			burst * (0.20 + (rand() % 61) / 100.0);
 	}
+
 	return p;
 }
 
@@ -98,10 +101,12 @@ void create_random_processes(struct Simulator *s)
 		snprintf(name, sizeof(name), "P%d", s->next_pid);
 		pcb = create_user_pcb(s, name, memory, burst, arrival, priority);
 		p = process_table_add(&s->process_table, pcb);
+
 		if (p == NULL) {
 			fprintf(stderr, "OOM al crear un proceso aleatorio.\n");
 			return;
 		}
+
 		s->user_process_count++;
 		log_event(s, "PROCESS", "%s(%d) creado: memoria=%d MB, burst=%.1f.",
 			  p->name, p->pid, p->mem.required_kb / 1024,
@@ -123,26 +128,26 @@ void demo(struct Simulator *s)
 		enum IoDevice device;
 	} demos[] = {
 	/*	 Name,  Memory,     Burst, Arrival, Priority, Has_io, Io_start, Io_duration, Device */
-		{"D00", 32  * 1024, 8.0,   0.0,     2,        true,   2.0,      1.5,         IO_DISK},
+		{"D00", 32  * 1024, 8.0,   0.0,     2,        true,   2.0,      5.0,         IO_DISK},
 		{"D01", 48  * 1024, 12.0,  0.0,     4,        false,  0.0,      0.0,         IO_NONE},
-		{"D02", 24  * 1024, 5.0,   1.0,     1,        true,   1.5,      0.8,         IO_KEYBOARD},
-		{"D03", 96  * 1024, 18.0,  1.0,     7,        true,   6.0,      2.5,         IO_NETWORK},
+		{"D02", 24  * 1024, 5.0,   1.0,     1,        true,   1.5,      6.0,         IO_KEYBOARD},
+		{"D03", 96  * 1024, 18.0,  1.0,     7,        true,   6.0,      8.0,         IO_NETWORK},
 		{"D04", 64  * 1024, 10.0,  2.0,     3,        false,  0.0,      0.0,         IO_NONE},
-		{"D05", 40  * 1024, 7.0,   2.0,     5,        true,   2.5,      1.2,         IO_PRINTER},
-		{"D06", 128 * 1024, 22.0,  3.0,     8,        true,   8.0,      3.0,         IO_DISK},
+		{"D05", 40  * 1024, 7.0,   2.0,     5,        true,   2.5,      7.0,         IO_PRINTER},
+		{"D06", 128 * 1024, 22.0,  3.0,     8,        true,   8.0,      10.0,        IO_DISK},
 		{"D07", 56  * 1024, 9.0,   3.0,     0,        false,  0.0,      0.0,         IO_NONE},
-		{"D08", 72  * 1024, 14.0,  4.0,     6,        true,   5.0,      1.7,         IO_MOUSE},
+		{"D08", 72  * 1024, 14.0,  4.0,     6,        true,   5.0,      9.0,         IO_MOUSE},
 		{"D09", 28  * 1024, 6.0,   4.0,     2,        false,  0.0,      0.0,         IO_NONE},
-		{"D10", 144 * 1024, 25.0,  5.0,     9,        true,   10.0,     3.5,         IO_NETWORK},
-		{"D11", 36  * 1024, 8.0,   5.0,     4,        true,   3.0,      1.0,         IO_KEYBOARD},
+		{"D10", 144 * 1024, 25.0,  5.0,     9,        true,   10.0,     12.0,        IO_NETWORK},
+		{"D11", 36  * 1024, 8.0,   5.0,     4,        true,   3.0,      5.0,         IO_KEYBOARD},
 		{"D12", 88  * 1024, 16.0,  6.0,     5,        false,  0.0,      0.0,         IO_NONE},
-		{"D13", 52  * 1024, 11.0,  6.0,     1,        true,   4.0,      2.0,         IO_DISK},
-		{"D14", 112 * 1024, 20.0,  7.0,     7,        true,   7.0,      2.8,         IO_PRINTER},
+		{"D13", 52  * 1024, 11.0,  6.0,     1,        true,   4.0,      7.0,         IO_DISK},
+		{"D14", 112 * 1024, 20.0,  7.0,     7,        true,   7.0,      11.0,        IO_PRINTER},
 		{"D15", 44  * 1024, 7.0,   7.0,     3,        false,  0.0,      0.0,         IO_NONE},
-		{"D16", 76  * 1024, 13.0,  8.0,     6,        true,   5.5,      1.4,         IO_MOUSE},
-		{"D17", 60  * 1024, 10.0,  8.0,     2,        true,   3.5,      1.9,         IO_NETWORK},
+		{"D16", 76  * 1024, 13.0,  8.0,     6,        true,   5.5,      8.0,         IO_MOUSE},
+		{"D17", 60  * 1024, 10.0,  8.0,     2,        true,   3.5,      6.0,         IO_NETWORK},
 		{"D18", 104 * 1024, 19.0,  9.0,     8,        false,  0.0,      0.0,         IO_NONE},
-		{"D19", 30  * 1024, 6.0,   9.0,     0,        true,   2.0,      0.9,         IO_DISK},
+		{"D19", 30  * 1024, 6.0,   9.0,     0,        true,   2.0,      5.0,         IO_DISK},
 	};
 
 	for (int i = 0; i < 20; i++) {
@@ -223,14 +228,17 @@ void create_system_processes(struct Simulator *s)
 		pcb.sched.priority = 0;
 		pcb.resident = false;
 		p = process_table_add(&s->process_table, pcb);
+
 		if (p == NULL) {
 			fprintf(stderr, "OOM al crear procesos del SO.\n");
 			exit(EXIT_FAILURE);
 		}
+
 		if (!kmalloc(s, p)) {
 			fprintf(stderr, "No se pudo reservar memoria para %s.\n", p->name);
 			exit(EXIT_FAILURE);
 		}
+
 		enqueue(&s->system_q, p);
 	}
 }
@@ -254,11 +262,14 @@ void finish_process(struct Simulator *s, struct Pcb *p, bool failed)
 void terminate_running_process(struct Simulator *s)
 {
 	struct Pcb *p = s->running;
+
 	if (p == NULL)
 		return;
+
 	dispatch_save_ctx(s);
 	finish_process(s, p, false);
 	log_event(s, "CPU", "%s(%d) terminó.", p->name, p->pid);
+
 	s->running = NULL;
 	s->cpu_busy = false;
 }
@@ -267,18 +278,22 @@ void fail_running_process(struct Simulator *s, enum IntType type,
 			  const char *code, const char *description)
 {
 	struct Pcb *p = s->running;
+
 	if (p == NULL)
 		return;
+
 	record_interrupt(s, p, type, IO_NONE, true);
 	p->err.has_error = true;
 	p->err.fatal = true;
 	p->err.occurred_at = s->current_time;
 	snprintf(p->err.error_code, sizeof(p->err.error_code), "%s", code);
 	snprintf(p->err.error_desc, sizeof(p->err.error_desc), "%s", description);
+
 	dispatch_save_ctx(s);
 	finish_process(s, p, true);
 	log_event(s, "ERROR", "%s(%d): %s - %s.", p->name, p->pid,
 		  p->err.error_code, p->err.error_desc);
+		  
 	s->running = NULL;
 	s->cpu_busy = false;
 }

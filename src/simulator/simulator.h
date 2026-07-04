@@ -90,8 +90,10 @@ struct Pcb;
 struct MemoryBlock;
 
 struct CpuContext {
-	int program_counter;		/* Heap */
-	int stack_pointer;		/* Stack */
+	int program_counter;		/* Direccion fisica dentro de TEXT */
+	int stack_pointer;		/* Direccion fisica dentro de STACK */
+	int pc_offset;			/* Offset desde el inicio de TEXT */
+	int sp_offset;			/* Offset desde el limite de STACK */
 };
 
 struct SchedulerData {
@@ -108,7 +110,7 @@ struct SchedulerData {
 	double cpu_time;		/* Tiempo ejecutandose */
 	int priority;
 	double remaining_quantum;
-	int context_switches;		/* Cada vez que entra a los registros */
+	int context_switches;		/* Cada cambio de contexto */
 };
 
 struct ProcessSegment {

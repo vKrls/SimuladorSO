@@ -16,10 +16,13 @@ void tick_running_process(struct Simulator *s, double delta)
 
 	if (p == NULL)
 		return;
+
 	p->sched.remaining_time -= delta;
 	p->sched.cpu_time += delta;
 	s->cpu_process_time += delta;
 	s->cpu_ctx.program_counter++;
+	s->cpu_ctx.pc_offset++;
+
 	if (s->alg_sched == ROUND)
 		p->sched.remaining_quantum -= delta;
 
@@ -50,11 +53,13 @@ void tick_running_process(struct Simulator *s, double delta)
 		terminate_running_process(s);
 		return;
 	}
+
 	if (p->io.has_io && !p->io.started &&
 	    executed + TIME_EPSILON >= p->io.start_time) {
 		running_to_blocked(s);
 		return;
 	}
+	
 	if (s->alg_sched == ROUND &&
 	    p->sched.remaining_quantum <= TIME_EPSILON) {
 		record_interrupt(s, p, INT_HW_TIMER, IO_NONE, false);

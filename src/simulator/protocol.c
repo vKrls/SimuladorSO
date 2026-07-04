@@ -40,20 +40,18 @@ void send_json_string(const char *text)
 
 static void send_interrupts(struct Pcb *p)
 {
-	int i;
-
 	printf("\"interrupts\":{\"planned\":%d,\"periodic_completed\":%d,"
 	       "\"total\":%d,\"by_type\":{",
 	       p->interrupt.periodic_target, p->interrupt.periodic_done,
 	       p->interrupt.total);
-	for (i = 0; i < INT_TYPE_COUNT; i++) {
+	for (int i = 0; i < INT_TYPE_COUNT; i++) {
 		if (i > 0)
 			putchar(',');
 		send_json_string(interrupt_type_name((enum IntType)i));
 		printf(":%d", p->interrupt.by_type[i]);
 	}
 	printf("},\"history\":[");
-	for (i = 0; i < p->interrupt.history_count; i++) {
+	for (int i = 0; i < p->interrupt.history_count; i++) {
 		struct InterruptEvent *event = &p->interrupt.history[i];
 		if (i > 0)
 			putchar(',');
@@ -68,10 +66,8 @@ static void send_interrupts(struct Pcb *p)
 
 static void send_process_segments(struct Pcb *p)
 {
-	int i;
-
 	putchar('[');
-	for (i = 0; i < p->mem.segment_count; i++) {
+	for (int i = 0; i < p->mem.segment_count; i++) {
 		struct ProcessSegment *segment = &p->mem.segments[i];
 		if (i > 0)
 			putchar(',');
@@ -173,8 +169,6 @@ static void send_pid_queue(struct Queue *q)
 
 static void send_queues(struct Simulator *s)
 {
-	int i;
-
 	printf("\"queues\":{\"job\":");
 	send_pid_queue(&s->job_q);
 	printf(",\"ready\":");
@@ -184,7 +178,7 @@ static void send_queues(struct Simulator *s)
 	printf(",\"finished\":");
 	send_pid_queue(&s->finished_q);
 	printf(",\"devices\":{");
-	for (i = 0; i < IO_DEVICE_COUNT; i++) {
+	for (int i = 0; i < IO_DEVICE_COUNT; i++) {
 		if (i > 0)
 			putchar(',');
 		send_json_string(io_device_name((enum IoDevice)i));

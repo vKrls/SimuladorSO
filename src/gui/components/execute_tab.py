@@ -161,19 +161,20 @@ class Execute_Tab(QTabWidget):
         metrics_group = QGroupBox("MÉTRICAS GLOBALES")
         metrics_layout = QGridLayout(metrics_group)
         metrics_layout.setSpacing(8)
+        metric_color = "#2563eb"
         metrics = [
-            ("avg_ready_time", "Ready Promedio", "#0ea5e9"),
-            ("avg_turnaround", "TAT Promedio", "#0284c7"),
-            ("avg_response", "Respuesta Promedio", "#2563eb"),
-            ("throughput", "Throughput", "#38bdf8"),
-            ("cpu_util", "Utilización CPU", "#06b6d4"),
-            ("total_time", "Tiempo Total", "#0891b2"),
-            ("interrupts", "Interrupciones", "#60a5fa"),
-            ("errors", "Errores", "#3b82f6"),
-            ("swap_outs", "Swap-outs", "#22d3ee"),
-            ("swap_ins", "Swap-ins", "#0e7490"),
-            ("context_switches", "Cambios Contexto", "#1d4ed8"),
-            ("context_switch_time", "Tiempo Contexto", "#075985"),
+            ("avg_ready_time", "Ready Promedio", metric_color),
+            ("avg_turnaround", "TAT Promedio", metric_color),
+            ("avg_response", "Respuesta Promedio", metric_color),
+            ("throughput", "Throughput", metric_color),
+            ("cpu_util", "Utilización CPU", metric_color),
+            ("total_time", "Tiempo Total", metric_color),
+            ("interrupts", "Interrupciones", metric_color),
+            ("errors", "Errores", metric_color),
+            ("swap_outs", "Swap-outs", metric_color),
+            ("swap_ins", "Swap-ins", metric_color),
+            ("context_switches", "Cambios Contexto", metric_color),
+            ("context_switch_time", "Tiempo Contexto", metric_color),
         ]
         for index, (key, label, color) in enumerate(metrics):
             metrics_layout.addWidget(self._metric_box(key, label, color), index // 3, index % 3)

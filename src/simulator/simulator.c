@@ -12,7 +12,6 @@
 struct Simulator simulator_init(void)
 {
 	struct Simulator s;
-	int i;
 
 	memset(&s, 0, sizeof(s));
 	s.state = SIM_PAUSE;
@@ -29,7 +28,7 @@ struct Simulator simulator_init(void)
 	s.ready_q = init_queue();
 	s.nonresident_q = init_queue();
 	s.finished_q = init_queue();
-	for (i = 0; i < IO_DEVICE_COUNT; i++)
+	for (int i = 0; i < IO_DEVICE_COUNT; i++)
 		s.device_q[i] = init_queue();
 	s.memory_list = mem_init();
 	s.gantt = gantt_init();
