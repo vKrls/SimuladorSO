@@ -4,6 +4,5 @@
 #include "simulator.h"
 
 void process_stdin(struct Simulator *s, char *line);
-bool stdin_has_data(void);
 
 #endif

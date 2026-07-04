@@ -1,7 +1,8 @@
 # Entornos y cachés de Python
-.venv/
-venv/
-env/
+.venv*/
+venv*/
+env*/
+ENV*/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -22,5 +23,3 @@ dist/
 
 # Documentación local generada para la entrega
 docs/
-
-*.sh

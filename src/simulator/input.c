@@ -5,11 +5,9 @@
 #include "process_table.h"
 #include "protocol.h"
 
-#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 static bool valid_config(int sched, int memory, double quantum, double cost,
 			 int speed)
@@ -147,13 +145,4 @@ void process_stdin(struct Simulator *s, char *line)
 	}
 
 	log_event(s, "ERROR", "Comando desconocido: %s", line);
-}
-
-bool stdin_has_data(void)
-{
-	struct pollfd fd = {0};
-	fd.fd = STDIN_FILENO;
-	fd.events = POLLIN;
-	return poll(&fd, 1, 0) > 0 &&
-		   (fd.revents & (POLLIN | POLLHUP | POLLERR | POLLNVAL));
 }

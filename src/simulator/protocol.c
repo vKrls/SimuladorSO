@@ -1,20 +1,12 @@
 #include "protocol.h"
 
 #include "gantt.h"
+#include "host.h"
 #include "names.h"
 #include "process_table.h"
 #include "queue.h"
 
 #include <stdio.h>
-#include <time.h>
-
-static int64_t monotonic_ms(void)
-{
-	struct timespec now;
-
-	clock_gettime(CLOCK_MONOTONIC, &now);
-	return (int64_t)now.tv_sec * 1000 + now.tv_nsec / 1000000;
-}
 
 void send_json_string(const char *text)
 {
