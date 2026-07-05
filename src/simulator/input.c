@@ -178,6 +178,20 @@ void process_stdin(struct Simulator *s, char *line)
 		return;
 	}
 
+	if (strncmp(line, "SET_SEED", 8) == 0) {
+		unsigned int seed;
+
+		if (sscanf(line, "SET_SEED %u", &seed) != 1) {
+			log_event(s, "ERROR", "SET_SEED inválido: %s", line);
+			return;
+		}
+
+		srand(seed);
+		log_event(s, "CONFIG", "Semilla aleatoria=%u.", seed);
+		send_data(s, true);
+		return;
+	}
+
 	if (strncmp(line, "ADD", 3) == 0) {
 		char name[16];
 		int mem_kb;
