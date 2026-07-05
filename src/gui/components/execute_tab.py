@@ -22,15 +22,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gui.components.process_queues_tab import ProcessQueuesTab
 from gui.components.visual_widgets import GanttWidget, GlowLabel, MemoryMapWidget, STATE_COLORS, STATE_LABELS
 from gui.domain.models import SimulationResult, UiProcess
 
 
 class Execute_Tab(QTabWidget):
     EXECUTION_TAB = 0
-    STATS_TAB = 1
-    PCB_TAB = 2
-    SYSTEM_TAB = 3
+    QUEUES_TAB = 1
+    STATS_TAB = 2
+    PCB_TAB = 3
+    SYSTEM_TAB = 4
 
     command_submitted = Signal(str)
 
@@ -44,6 +46,8 @@ class Execute_Tab(QTabWidget):
         self._last_state: dict = {}
 
         self.addTab(self._build_execution_tab(), "Ejecución")
+        self.queues_tab = ProcessQueuesTab()
+        self.addTab(self.queues_tab, "Colas de Procesos")
         self.addTab(self._build_stats_tab(), "Estadísticas")
         self.addTab(self._build_pcb_tab(), "PCB")
         self.addTab(self._build_system_tab(), "Procesos del SO")
@@ -359,6 +363,7 @@ class Execute_Tab(QTabWidget):
         self.stats_table.setRowCount(0)
         self.pcb_table.setRowCount(0)
         self.system_table.setRowCount(0)
+        self.queues_tab.clear()
         self.cpu_process.setText("-- INACTIVO --")
         self.cpu_process.setStyleSheet("color: #484f58; font-size: 11px;")
         self.cpu_progress.setValue(0)
@@ -473,6 +478,8 @@ class Execute_Tab(QTabWidget):
                 segments,
                 self._running_process_from_state(processes, state),
             )
+        elif index == self.QUEUES_TAB:
+            self.queues_tab.set_state(processes, system_processes, state)
         elif index == self.STATS_TAB:
             if stats:
                 self._fill_metrics(stats)

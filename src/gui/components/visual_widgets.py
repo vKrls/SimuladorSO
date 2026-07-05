@@ -126,17 +126,6 @@ class GanttWidget(QWidget):
             return
 
         content_width = self._content_width()
-        painter.setPen(QColor("#8b949e"))
-        painter.setFont(QFont("Courier New", 7))
-        painter.drawText(
-            0,
-            4,
-            width,
-            16,
-            Qt.AlignmentFlag.AlignRight,
-            "SLIDE" if self.mode == self.SLIDE_MODE else "AJUSTE",
-        )
-
         for seg in self.segments:
             start = float(seg.get("start", 0))
             duration = float(seg.get("duration", 0))
