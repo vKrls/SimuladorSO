@@ -57,6 +57,8 @@ const char *interrupt_type_name(enum IntType type)
 	case INT_HW_IO: return "HW_IO";
 	case INT_HW_TIMER: return "HW_TIMER";
 	case INT_SW_SYSCALL: return "SW_SYSCALL";
+	case INT_IO_REQUEST: return "IO_REQUEST";
+	case INT_IO_COMPLETE: return "IO_COMPLETE";
 	case INT_EXC_DIV_ZERO: return "EXC_DIV_ZERO";
 	case INT_EXC_MEM: return "EXC_MEMORY";
 	default: return "UNKNOWN";

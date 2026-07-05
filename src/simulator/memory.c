@@ -33,6 +33,20 @@ static int segment_required_kb(struct MemoryData *mem, int percent,
 	return max_int(1, mem->required_kb * percent / 100);
 }
 
+static int segment_required_ratio_kb(struct MemoryData *mem, int numerator,
+				     int denominator, int assigned_blocks)
+{
+	int required_kb;
+	int capacity_kb;
+
+	if (assigned_blocks <= 0 || denominator <= 0)
+		return 0;
+
+	capacity_kb = assigned_blocks * BLOCK_SIZE_KB;
+	required_kb = mem->required_kb * numerator / denominator;
+	return min_int(max_int(1, required_kb), capacity_kb);
+}
+
 static struct ProcessSegment *find_segment(struct MemoryData *mem,
 					   enum SegmentType type)
 {
@@ -138,6 +152,12 @@ void memory_layout_segments(struct Pcb *p)
 	int required[PROCESS_SEGMENT_COUNT] = {0};
 	int cursor;
 	int total;
+	int text_percent;
+	int data_percent;
+	int dynamic_percent;
+	int data_area_blocks;
+	int dynamic_blocks;
+	int initial_dynamic_blocks;
 	int stack_start;
 
 	if (p == NULL)
@@ -148,23 +168,49 @@ void memory_layout_segments(struct Pcb *p)
 	if (mem->block == NULL || mem->assigned_blocks <= 0)
 		return;
 
+	text_percent = mem->text_percent;
+	data_percent = mem->data_percent;
+	dynamic_percent = mem->dynamic_percent;
+	if (text_percent + data_percent + dynamic_percent != 100) {
+		text_percent = DEFAULT_TEXT_PERCENT;
+		data_percent = DEFAULT_DATA_PERCENT;
+		dynamic_percent = DEFAULT_DYNAMIC_PERCENT;
+	}
+
 	total = mem->assigned_blocks;
 	if (total < PROCESS_SEGMENT_COUNT) {
 		for (int i = 0; i < total; i++)
 			blocks[i] = 1;
 	} else {
-		blocks[SEG_TEXT]  = max_int(1, total * 30 / 100);
-		blocks[SEG_DATA]  = max_int(1, total * 20 / 100);
-		blocks[SEG_BSS]   = max_int(1, total * 10 / 100);
-		blocks[SEG_HEAP]  = max_int(1, total * 10 / 100);
-		blocks[SEG_STACK] = max_int(1, total * 10 / 100);
+		blocks[SEG_TEXT] = max_int(1, total * text_percent / 100);
+		data_area_blocks = max_int(2, total * data_percent / 100);
+		dynamic_blocks = total - blocks[SEG_TEXT] - data_area_blocks;
+		if (dynamic_blocks < 2)
+			dynamic_blocks = 2;
+
+		blocks[SEG_BSS] =
+			max_int(1, data_area_blocks * BSS_PERCENT_OF_DATA / 100);
+		if (blocks[SEG_BSS] >= data_area_blocks)
+			blocks[SEG_BSS] = data_area_blocks - 1;
+		blocks[SEG_DATA] = data_area_blocks - blocks[SEG_BSS];
+
+		initial_dynamic_blocks = max_int(2, dynamic_blocks / 2);
+		blocks[SEG_HEAP] = max_int(1, initial_dynamic_blocks / 2);
+		blocks[SEG_STACK] = initial_dynamic_blocks - blocks[SEG_HEAP];
 	}
 
-	required[SEG_TEXT]  = segment_required_kb(mem, 30, blocks[SEG_TEXT]);
-	required[SEG_DATA]  = segment_required_kb(mem, 20, blocks[SEG_DATA]);
-	required[SEG_BSS]   = segment_required_kb(mem, 10, blocks[SEG_BSS]);
-	required[SEG_HEAP]  = segment_required_kb(mem, 10, blocks[SEG_HEAP]);
-	required[SEG_STACK] = segment_required_kb(mem, 10, blocks[SEG_STACK]);
+	required[SEG_TEXT] = segment_required_kb(mem, text_percent,
+						 blocks[SEG_TEXT]);
+	required[SEG_DATA] = segment_required_ratio_kb(
+		mem, data_percent * (100 - BSS_PERCENT_OF_DATA), 10000,
+		blocks[SEG_DATA]);
+	required[SEG_BSS] = segment_required_ratio_kb(
+		mem, data_percent * BSS_PERCENT_OF_DATA, 10000,
+		blocks[SEG_BSS]);
+	required[SEG_HEAP] = segment_required_ratio_kb(
+		mem, dynamic_percent, 400, blocks[SEG_HEAP]);
+	required[SEG_STACK] = segment_required_ratio_kb(
+		mem, dynamic_percent, 400, blocks[SEG_STACK]);
 
 	cursor = mem->start;
 	set_segment(&mem->segments[SEG_TEXT], SEG_TEXT, cursor,
@@ -240,6 +286,55 @@ bool memory_grow_stack(struct Pcb *p, int blocks)
 	memory_restore_cpu_addresses(p);
 	
 	return true;
+}
+
+void memory_tick_dynamic_segments(struct Pcb *p)
+{
+	struct ProcessSegment *heap;
+	struct ProcessSegment *stack;
+	int dynamic_capacity;
+	int current_used;
+	int target_used;
+	int base_used;
+	double progress;
+
+	if (p == NULL || p->mem.segment_count == 0 ||
+	    p->sched.burst_time <= 0.0)
+		return;
+
+	heap = find_segment(&p->mem, SEG_HEAP);
+	stack = find_segment(&p->mem, SEG_STACK);
+	if (heap == NULL || stack == NULL)
+		return;
+
+	dynamic_capacity = stack->limit_block - heap->start_block;
+	current_used = heap->assigned_blocks + stack->assigned_blocks;
+	base_used = dynamic_capacity / 2;
+	progress = p->sched.cpu_time / p->sched.burst_time;
+	if (progress < 0.0)
+		progress = 0.0;
+	if (progress > 1.0)
+		progress = 1.0;
+
+	target_used = base_used + (int)((dynamic_capacity - base_used) * progress);
+	while (current_used < target_used) {
+		bool grew;
+
+		if (heap->assigned_blocks <= stack->assigned_blocks)
+			grew = memory_grow_heap(p, 1);
+		else
+			grew = memory_grow_stack(p, 1);
+
+		if (!grew) {
+			grew = memory_grow_heap(p, 1);
+			if (!grew)
+				grew = memory_grow_stack(p, 1);
+		}
+		if (!grew)
+			break;
+
+		current_used++;
+	}
 }
 
 void update_max_mem(struct MemoryBlockList *m)

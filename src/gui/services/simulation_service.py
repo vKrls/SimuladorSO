@@ -148,6 +148,9 @@ class SimulationService:
             quantum=self.quantum_for(algorithm)
             if algorithm == "round_robin"
             else process_data.quantum,
+            text_percent=process_data.text_percent,
+            data_percent=process_data.data_percent,
+            dynamic_percent=process_data.dynamic_percent,
             color=self.process_mapper.color_for(pid),
         )
         self.store.add_process(algorithm, process)

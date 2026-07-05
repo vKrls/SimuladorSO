@@ -72,7 +72,7 @@ class GanttWidget(QWidget):
         super().__init__()
         self.segments: list[dict] = []
         self.total_time = 1.0
-        self.mode = self.FIT_MODE
+        self.mode = self.SLIDE_MODE
         self.scroll_x = 0
         self._press_x = 0
         self._press_scroll_x = 0
@@ -80,7 +80,7 @@ class GanttWidget(QWidget):
         self._auto_follow = True
         self.setMinimumHeight(104)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
 
     def set_segments(self, segments: list[dict], total_time: float | None = None) -> None:
         self.segments = segments

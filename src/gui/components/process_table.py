@@ -164,7 +164,8 @@ class ProcessCard(QFrame):
 
 
 class ProcessTable(QGroupBox):
-    PANEL_WIDTH = ProcessCard.CARD_WIDTH + 24
+    SCROLLBAR_WIDTH = 16
+    PANEL_WIDTH = ProcessCard.CARD_WIDTH + 24 + SCROLLBAR_WIDTH
 
     def __init__(self, alg: str = ""):
         super().__init__("TABLA DE PROCESOS")
@@ -199,7 +200,7 @@ class ProcessTable(QGroupBox):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         container = QWidget()
         self.layout_process_table = QVBoxLayout(container)

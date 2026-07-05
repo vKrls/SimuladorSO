@@ -26,6 +26,9 @@ class ProcessData:
     arrival_time: float
     priority: int = 0
     quantum: float = 0.0
+    text_percent: int = 30
+    data_percent: int = 30
+    dynamic_percent: int = 40
 
 
 @dataclass
@@ -37,6 +40,9 @@ class UiProcess:
     arrival_time: float
     priority: int = 0
     quantum: float = 0.0
+    text_percent: int = 30
+    data_percent: int = 30
+    dynamic_percent: int = 40
     state: str = "NONE"
     remaining_time: float | None = None
     assigned_blocks: int = 0
@@ -78,7 +84,8 @@ class UiProcess:
     def to_c_command(self) -> str:
         return (
             f"ADD {self.name} {self.memory} {self.burst_time:.3f} "
-            f"{self.arrival_time:.3f} {self.priority}"
+            f"{self.arrival_time:.3f} {self.priority} "
+            f"{self.text_percent} {self.data_percent} {self.dynamic_percent}"
         )
 
     def to_payload(self) -> dict[str, Any]:
@@ -90,6 +97,9 @@ class UiProcess:
             "arrival_time": self.arrival_time,
             "priority": self.priority,
             "quantum": self.quantum,
+            "text_percent": self.text_percent,
+            "data_percent": self.data_percent,
+            "dynamic_percent": self.dynamic_percent,
             "color": self.color,
         }
 

@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define MIN_RANDOM_IO_REQUESTS 10
+
 static struct Pcb pcb_defaults(void)
 {
 	struct Pcb p;
@@ -20,6 +22,9 @@ static struct Pcb pcb_defaults(void)
 	p.cpu_ctx.stack_pointer = -1;
 	p.mem.start = -1;
 	p.mem.limit = -1;
+	p.mem.text_percent = DEFAULT_TEXT_PERCENT;
+	p.mem.data_percent = DEFAULT_DATA_PERCENT;
+	p.mem.dynamic_percent = DEFAULT_DYNAMIC_PERCENT;
 	p.sched.start_time = -1.0;
 	p.sched.finish_time = -1.0;
 	p.io.device = IO_NONE;
@@ -46,8 +51,51 @@ static int interrupt_target_for(int mem_kb, double burst)
 	return target;
 }
 
+static double clamp_factor(double value)
+{
+	if (value < 0.0)
+		return 0.0;
+	if (value > 1.0)
+		return 1.0;
+	return value;
+}
+
+static double io_duration_for(int mem_kb, double burst)
+{
+	double memory_factor = clamp_factor((double)mem_kb / (192.0 * 1024.0));
+	double burst_factor = clamp_factor(burst / 30.0);
+	double process_factor = (memory_factor + burst_factor) / 2.0;
+	double duration = 5.0 + process_factor * 10.0 + rand() % 6;
+
+	if (duration > 20.0)
+		return 20.0;
+	return duration;
+}
+
+static enum IoDevice random_io_device(void)
+{
+	static const enum IoDevice devices[] = {
+		IO_KEYBOARD, IO_DISK, IO_PRINTER
+	};
+
+	return devices[rand() % (sizeof(devices) / sizeof(devices[0]))];
+}
+
+static void configure_process_io(struct Pcb *p, int mem_kb, double burst)
+{
+	p->io.has_io = true;
+	p->io.started = false;
+	p->io.completed = false;
+	p->io.start_time = burst * (0.15 + (rand() % 66) / 100.0);
+	p->io.duration = io_duration_for(mem_kb, burst);
+	p->io.remaining_time = p->io.duration;
+	p->io.device = random_io_device();
+}
+
 struct Pcb create_user_pcb(struct Simulator *s, const char *name, int mem_kb,
-			   double burst, double arrival, int priority)
+			   double burst, double arrival, int priority,
+			   int text_percent, int data_percent,
+			   int dynamic_percent)
 {
 	struct Pcb p = pcb_defaults();
 
@@ -55,6 +103,9 @@ struct Pcb create_user_pcb(struct Simulator *s, const char *name, int mem_kb,
 	p.pid = s->next_pid++;
 
 	p.mem.required_kb = mem_kb;
+	p.mem.text_percent = text_percent;
+	p.mem.data_percent = data_percent;
+	p.mem.dynamic_percent = dynamic_percent;
 	
 	p.sched.arrival_time = arrival;
 	p.sched.burst_time = burst;
@@ -63,13 +114,8 @@ struct Pcb create_user_pcb(struct Simulator *s, const char *name, int mem_kb,
 	p.sched.remaining_quantum = s->quantum;
 
 	/* Entrada y Salida */
-	p.io.has_io = rand() % 100 < 65;
-	p.io.start_time = burst * (0.15 + (rand() % 66) / 100.0);
-	if (p.io.has_io) {
-		p.io.duration = 5.0 + rand() % 16;
-		p.io.remaining_time = p.io.duration;
-		p.io.device = (enum IoDevice)(rand() % IO_DEVICE_COUNT);
-	}
+	if (rand() % 100 < 65)
+		configure_process_io(&p, mem_kb, burst);
 
 	/* Interrupciones en base a la memoria y burst */
 	p.interrupt.periodic_target = interrupt_target_for(mem_kb, burst);
@@ -89,6 +135,10 @@ struct Pcb create_user_pcb(struct Simulator *s, const char *name, int mem_kb,
 
 void create_random_processes(struct Simulator *s)
 {
+	int io_target = s->random_process_count < MIN_RANDOM_IO_REQUESTS ?
+			s->random_process_count : MIN_RANDOM_IO_REQUESTS;
+	int io_count = 0;
+
 	for (int i = 0; i < s->random_process_count; i++) {
 		struct Pcb pcb;
 		struct Pcb *p;
@@ -97,9 +147,19 @@ void create_random_processes(struct Simulator *s)
 		double burst = 4.0 + rand() % 27;
 		double arrival = rand() % 13;
 		int priority = rand() % 10;
+		int remaining_slots = s->random_process_count - i;
+		int remaining_io = io_target - io_count;
 
 		snprintf(name, sizeof(name), "P%d", s->next_pid);
-		pcb = create_user_pcb(s, name, memory, burst, arrival, priority);
+		pcb = create_user_pcb(s, name, memory, burst, arrival, priority,
+				      DEFAULT_TEXT_PERCENT, DEFAULT_DATA_PERCENT,
+				      DEFAULT_DYNAMIC_PERCENT);
+
+		if (!pcb.io.has_io && remaining_io >= remaining_slots)
+			configure_process_io(&pcb, memory, burst);
+		if (pcb.io.has_io)
+			io_count++;
+
 		p = process_table_add(&s->process_table, pcb);
 
 		if (p == NULL) {
@@ -114,7 +174,7 @@ void create_random_processes(struct Simulator *s)
 	}
 }
 
-void demo(struct Simulator *s)
+void test(struct Simulator *s)
 {
 	static const struct {
 		const char *name;
@@ -122,76 +182,50 @@ void demo(struct Simulator *s)
 		double burst;
 		double arrival;
 		int priority;
-		bool has_io;
-		double io_start;
-		double io_duration;
-		enum IoDevice device;
-	} demos[] = {
-	/*	 Name,  Memory,     Burst, Arrival, Priority, Has_io, Io_start, Io_duration, Device */
-		{"D00", 32  * 1024, 8.0,   0.0,     2,        true,   2.0,      5.0,         IO_DISK},
-		{"D01", 48  * 1024, 12.0,  0.0,     4,        false,  0.0,      0.0,         IO_NONE},
-		{"D02", 24  * 1024, 5.0,   1.0,     1,        true,   1.5,      6.0,         IO_KEYBOARD},
-		{"D03", 96  * 1024, 18.0,  1.0,     7,        true,   6.0,      8.0,         IO_NETWORK},
-		{"D04", 64  * 1024, 10.0,  2.0,     3,        false,  0.0,      0.0,         IO_NONE},
-		{"D05", 40  * 1024, 7.0,   2.0,     5,        true,   2.5,      7.0,         IO_PRINTER},
-		{"D06", 128 * 1024, 22.0,  3.0,     8,        true,   8.0,      10.0,        IO_DISK},
-		{"D07", 56  * 1024, 9.0,   3.0,     0,        false,  0.0,      0.0,         IO_NONE},
-		{"D08", 72  * 1024, 14.0,  4.0,     6,        true,   5.0,      9.0,         IO_MOUSE},
-		{"D09", 28  * 1024, 6.0,   4.0,     2,        false,  0.0,      0.0,         IO_NONE},
-		{"D10", 144 * 1024, 25.0,  5.0,     9,        true,   10.0,     12.0,        IO_NETWORK},
-		{"D11", 36  * 1024, 8.0,   5.0,     4,        true,   3.0,      5.0,         IO_KEYBOARD},
-		{"D12", 88  * 1024, 16.0,  6.0,     5,        false,  0.0,      0.0,         IO_NONE},
-		{"D13", 52  * 1024, 11.0,  6.0,     1,        true,   4.0,      7.0,         IO_DISK},
-		{"D14", 112 * 1024, 20.0,  7.0,     7,        true,   7.0,      11.0,        IO_PRINTER},
-		{"D15", 44  * 1024, 7.0,   7.0,     3,        false,  0.0,      0.0,         IO_NONE},
-		{"D16", 76  * 1024, 13.0,  8.0,     6,        true,   5.5,      8.0,         IO_MOUSE},
-		{"D17", 60  * 1024, 10.0,  8.0,     2,        true,   3.5,      6.0,         IO_NETWORK},
-		{"D18", 104 * 1024, 19.0,  9.0,     8,        false,  0.0,      0.0,         IO_NONE},
-		{"D19", 30  * 1024, 6.0,   9.0,     0,        true,   2.0,      5.0,         IO_DISK},
+		int text_percent;
+		int data_percent;
+		int dynamic_percent;
+	} tests[] = {
+	/*	 Name,  Memory,     Burst, Arrival, Priority, Text, Data, Dynamic */
+		{"T00", 32  * 1024, 8.0,   0.0,     2,        30,   30,   40},
+		{"T01", 48  * 1024, 12.0,  0.0,     4,        35,   25,   40},
+		{"T02", 24  * 1024, 5.0,   1.0,     1,        25,   35,   40},
+		{"T03", 96  * 1024, 18.0,  1.0,     7,        40,   30,   30},
+		{"T04", 64  * 1024, 10.0,  2.0,     3,        30,   40,   30},
+		{"T05", 40  * 1024, 7.0,   2.0,     5,        20,   40,   40},
+		{"T06", 128 * 1024, 22.0,  3.0,     8,        45,   25,   30},
+		{"T07", 56  * 1024, 9.0,   3.0,     0,        25,   25,   50},
+		{"T08", 72  * 1024, 14.0,  4.0,     6,        35,   35,   30},
+		{"T09", 28  * 1024, 6.0,   4.0,     2,        20,   30,   50},
+		{"T10", 144 * 1024, 25.0,  5.0,     9,        50,   20,   30},
+		{"T11", 36  * 1024, 8.0,   5.0,     4,        30,   25,   45},
+		{"T12", 88  * 1024, 16.0,  6.0,     5,        40,   20,   40},
+		{"T13", 52  * 1024, 11.0,  6.0,     1,        25,   45,   30},
+		{"T14", 112 * 1024, 20.0,  7.0,     7,        45,   30,   25},
+		{"T15", 44  * 1024, 7.0,   7.0,     3,        20,   35,   45},
+		{"T16", 76  * 1024, 13.0,  8.0,     6,        30,   20,   50},
+		{"T17", 60  * 1024, 10.0,  8.0,     2,        35,   30,   35},
+		{"T18", 104 * 1024, 19.0,  9.0,     8,        40,   35,   25},
+		{"T19", 30  * 1024, 6.0,   9.0,     0,        25,   30,   45},
 	};
 
 	for (int i = 0; i < 20; i++) {
-		struct Pcb pcb = pcb_defaults();
+		struct Pcb pcb;
 		struct Pcb *p;
 
-		snprintf(pcb.name, sizeof(pcb.name), "%s", demos[i].name);
-		pcb.pid = s->next_pid++;
-		
-		pcb.mem.required_kb = demos[i].memory_kb;
-		
-		pcb.sched.arrival_time = demos[i].arrival;
-		pcb.sched.burst_time = demos[i].burst;
-		pcb.sched.remaining_time = demos[i].burst;
-		pcb.sched.priority = demos[i].priority;
-		pcb.sched.remaining_quantum = s->quantum;
-		
-		pcb.io.has_io = demos[i].has_io;
-		pcb.io.start_time = demos[i].io_start;
-		if (pcb.io.has_io) {
-			pcb.io.duration = demos[i].io_duration;
-			pcb.io.remaining_time = demos[i].io_duration;
-			pcb.io.device = demos[i].device;
-		}
-		
-		pcb.interrupt.periodic_target =
-			interrupt_target_for(pcb.mem.required_kb, pcb.sched.burst_time);
-		pcb.interrupt.next_cpu_time =
-			pcb.sched.burst_time / (pcb.interrupt.periodic_target + 1.0);
-		
-		if (i == 4) {
-			pcb.err.planned = true;
-			pcb.err.planned_type = INT_EXC_DIV_ZERO;
-			pcb.err.trigger_cpu_time = pcb.sched.burst_time * 0.40;
-		}
-		
+		pcb = create_user_pcb(s, tests[i].name, tests[i].memory_kb,
+				      tests[i].burst, tests[i].arrival,
+				      tests[i].priority, tests[i].text_percent,
+				      tests[i].data_percent,
+				      tests[i].dynamic_percent);
 		p = process_table_add(&s->process_table, pcb);
 		if (p == NULL) {
-			fprintf(stderr, "OOM al crear proceso demo.\n");
+			fprintf(stderr, "OOM al crear proceso test.\n");
 			return;
 		}
 		s->user_process_count++;
 		
-		log_event(s, "PROCESS", "%s(%d) demo creado: memoria=%d MB, burst=%.1f.",
+		log_event(s, "PROCESS", "%s(%d) test creado: memoria=%d MB, burst=%.1f.",
 			  p->name, p->pid, p->mem.required_kb / 1024,
 			  p->sched.burst_time);
 	}

@@ -48,6 +48,12 @@ static bool valid_speed(int speed)
 	return speed >= 1 && speed <= 100;
 }
 
+static bool valid_segment_percentages(int text, int data, int dynamic)
+{
+	return text > 0 && data > 0 && dynamic > 0 &&
+	       text + data + dynamic == 100;
+}
+
 static void apply_config(struct Simulator *s, int sched, int memory,
 			 double quantum, double cost, int speed)
 {
@@ -178,18 +184,28 @@ void process_stdin(struct Simulator *s, char *line)
 		double burst;
 		double arrival;
 		int priority;
+		int text_percent = DEFAULT_TEXT_PERCENT;
+		int data_percent = DEFAULT_DATA_PERCENT;
+		int dynamic_percent = DEFAULT_DYNAMIC_PERCENT;
 		struct Pcb pcb;
 		struct Pcb *p;
-		int parsed = sscanf(line, "ADD %15s %d %lf %lf %d",
-				    name, &mem_kb, &burst, &arrival, &priority);
+		int parsed = sscanf(line, "ADD %15s %d %lf %lf %d %d %d %d",
+				    name, &mem_kb, &burst, &arrival, &priority,
+				    &text_percent, &data_percent,
+				    &dynamic_percent);
 
-		if (parsed != 5 || mem_kb <= 0 || burst <= 0.0 ||
-		    arrival < 0.0 || priority < 0 || priority > 99) {
+		if ((parsed != 5 && parsed != 8) || mem_kb <= 0 ||
+		    burst <= 0.0 || arrival < 0.0 || priority < 0 ||
+		    priority > 99 ||
+		    !valid_segment_percentages(text_percent, data_percent,
+					       dynamic_percent)) {
 			log_event(s, "ERROR", "ADD inválido: %s", line);
 			return;
 		}
 
-		pcb = create_user_pcb(s, name, mem_kb, burst, arrival, priority);
+		pcb = create_user_pcb(s, name, mem_kb, burst, arrival,
+				      priority, text_percent, data_percent,
+				      dynamic_percent);
 		p = process_table_add(&s->process_table, pcb);
 
 		if (p == NULL) {
@@ -253,8 +269,8 @@ void process_stdin(struct Simulator *s, char *line)
 		return;
 	}
 
-	if (strncmp(line, "DEMO", 4) == 0) {
-		demo(s);
+	if (strncmp(line, "TEST", 4) == 0) {
+		test(s);
 		log_event(s, "SIMULATOR", "20 procesos de prueba cargados.");
 		send_data(s, true);
 		return;

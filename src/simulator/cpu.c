@@ -3,6 +3,7 @@
 #include "dispatcher.h"
 #include "interrupt.h"
 #include "io.h"
+#include "memory.h"
 #include "names.h"
 #include "process.h"
 #include "queue.h"
@@ -22,6 +23,7 @@ void tick_running_process(struct Simulator *s, double delta)
 	s->cpu_process_time += delta;
 	s->cpu_ctx.program_counter++;
 	s->cpu_ctx.pc_offset++;
+	memory_tick_dynamic_segments(p);
 
 	if (s->alg_sched == ROUND)
 		p->sched.remaining_quantum -= delta;

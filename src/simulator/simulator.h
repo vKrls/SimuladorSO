@@ -23,6 +23,10 @@
 #define ERR_CODE_MAX 24
 #define ERR_DESC_MAX 96
 #define PROCESS_SEGMENT_COUNT 5
+#define DEFAULT_TEXT_PERCENT 30
+#define DEFAULT_DATA_PERCENT 30
+#define DEFAULT_DYNAMIC_PERCENT 40
+#define BSS_PERCENT_OF_DATA 33
 
 enum SimulatorState {
 	SIM_RUN = 0,
@@ -75,9 +79,11 @@ enum IntType {
 	INT_HW_IO = 0,
 	INT_HW_TIMER = 1,
 	INT_SW_SYSCALL = 2,
-	INT_EXC_DIV_ZERO = 3,
-	INT_EXC_MEM = 4,
-	INT_TYPE_COUNT = 5,
+	INT_IO_REQUEST = 3,
+	INT_IO_COMPLETE = 4,
+	INT_EXC_DIV_ZERO = 5,
+	INT_EXC_MEM = 6,
+	INT_TYPE_COUNT = 7,
 };
 
 enum GanttType {
@@ -128,6 +134,9 @@ struct MemoryData {
 	int waste_kb;
 	int start;
 	int limit;
+	int text_percent;
+	int data_percent;
+	int dynamic_percent;
 	struct MemoryBlock *block;
 
 	struct ProcessSegment segments[PROCESS_SEGMENT_COUNT];
