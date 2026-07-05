@@ -22,4 +22,6 @@ dist/
 .idea/
 
 # Documentación local generada para la entrega
-docs/
+docs/*
+!docs/final/
+!docs/final/**

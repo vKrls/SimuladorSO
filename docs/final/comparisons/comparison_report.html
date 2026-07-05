@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Informe comparativo de politicas</title>
+    <style>
+        :root {
+            --bg: #101418;
+            --panel: #171d23;
+            --panel-2: #1d252d;
+            --line: #2b3844;
+            --text: #f2f7fb;
+            --muted: #a9b8c4;
+            --good: #5fbf8f;
+            --mid: #e2b85d;
+            --bad: #e26d6d;
+            --accent: #75b7e8;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            line-height: 1.45;
+        }
+        main {
+            width: min(1280px, calc(100% - 40px));
+            margin: 0 auto;
+            padding: 34px 0 44px;
+        }
+        header {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 28px;
+            align-items: end;
+            border-bottom: 1px solid var(--line);
+            padding-bottom: 24px;
+            margin-bottom: 24px;
+        }
+        h1, h2, h3, p { margin-top: 0; }
+        h1 { font-size: clamp(30px, 4vw, 48px); line-height: 1.05; margin-bottom: 12px; }
+        h2 { font-size: 22px; margin-bottom: 14px; }
+        h3 { font-size: 15px; margin-bottom: 8px; color: var(--muted); font-weight: 600; }
+        .lead { color: var(--muted); max-width: 760px; margin-bottom: 0; }
+        .meta {
+            display: grid;
+            gap: 8px;
+            padding: 14px 16px;
+            border: 1px solid var(--line);
+            background: var(--panel);
+            min-width: 240px;
+        }
+        .meta span, .label, .eyebrow {
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+        }
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 16px;
+            margin-bottom: 18px;
+        }
+        .summary-card, .panel {
+            border: 1px solid var(--line);
+            background: var(--panel);
+            padding: 18px;
+        }
+        .winner-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 12px;
+        }
+        .winner-grid div {
+            border-left: 3px solid var(--accent);
+            background: var(--panel-2);
+            padding: 12px;
+        }
+        strong { display: block; font-size: 16px; margin: 4px 0; }
+        small { color: var(--muted); }
+        .section-title {
+            display: flex;
+            justify-content: space-between;
+            gap: 18px;
+            align-items: end;
+            margin-bottom: 12px;
+        }
+        .section-title p { color: var(--muted); margin-bottom: 0; max-width: 520px; }
+        .rank-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+            gap: 18px;
+            margin: 18px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th, td {
+            border-bottom: 1px solid var(--line);
+            padding: 9px 10px;
+            text-align: left;
+            vertical-align: top;
+        }
+        th {
+            color: var(--muted);
+            font-weight: 600;
+            background: #131920;
+        }
+        tr:last-child td { border-bottom: 0; }
+        .score-pill {
+            display: inline-flex;
+            min-width: 52px;
+            justify-content: center;
+            padding: 3px 8px;
+            color: #0f1519;
+            background: var(--good);
+            font-weight: 700;
+        }
+        .matrix {
+            table-layout: fixed;
+        }
+        .matrix td:not(:first-child) {
+            border: 1px solid var(--bg);
+            color: #081015;
+            font-weight: 700;
+        }
+        .matrix small {
+            display: block;
+            color: rgba(8, 16, 21, .74);
+            font-weight: 600;
+            margin-top: 2px;
+        }
+        .legend {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            color: var(--muted);
+            margin-top: 12px;
+            font-size: 12px;
+        }
+        .legend span {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .swatch {
+            width: 18px;
+            height: 10px;
+            display: inline-block;
+        }
+        .files {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 10px;
+        }
+        .file {
+            background: var(--panel-2);
+            border: 1px solid var(--line);
+            padding: 12px;
+            color: var(--muted);
+        }
+        code { color: var(--text); }
+        @media (max-width: 780px) {
+            header { grid-template-columns: 1fr; }
+            main { width: min(100% - 24px, 1280px); }
+            .rank-grid { grid-template-columns: 1fr; }
+            .section-title { display: block; }
+            table { font-size: 12px; }
+            th, td { padding: 8px; }
+        }
+    </style>
+</head>
+<body>
+<main>
+    <header>
+        <div>
+            <h1>Informe comparativo de politicas</h1>
+            <p class="lead">Comparacion de 6 politicas de planificacion contra 3 estrategias de memoria, usando los 20 procesos definidos por <code>TEST</code>.</p>
+        </div>
+        <div class="meta">
+            <div><span>Generado</span><br>2026-07-05 04:37:11</div>
+            <div><span>Semilla</span><br>1234</div>
+            <div><span>Combinaciones</span><br>18</div>
+        </div>
+    </header>
+
+    <div class="card-grid">
+        
+            <section class="summary-card">
+                <p class="eyebrow">Contexto base</p>
+                <h2>Ganadores</h2>
+                <div class="winner-grid">
+                    <div>
+                        <span class="label">Rendimiento</span>
+                        <strong>Prioridad no expropiativa + First Fit</strong>
+                        <small>TAT 95.59 · Resp. 69.39</small>
+                    </div>
+                    <div>
+                        <span class="label">Memoria</span>
+                        <strong>FCFS + First Fit</strong>
+                        <small>Frag. 22.63% · Waste 0.00 MB</small>
+                    </div>
+                </div>
+            </section>
+            
+    </div>
+
+    <section class="rank-grid">
+        <div class="panel">
+            <div class="section-title">
+                <div>
+                    <p class="eyebrow">Ranking</p>
+                    <h2>Rendimiento</h2>
+                </div>
+            </div>
+            <table><thead><tr><th>#</th><th>Contexto</th><th>Planificacion</th><th>Memoria</th><th>Score</th><th>TAT</th><th>Frag.</th></tr></thead><tbody><tr><td>1</td><td>Contexto base</td><td>Prioridad no expropiativa</td><td>First Fit</td><td><span class="score-pill">3.50</span></td><td>95.59</td><td>52.68%</td></tr><tr><td>2</td><td>Contexto base</td><td>Prioridad no expropiativa</td><td>Best Fit</td><td><span class="score-pill">4.50</span></td><td>95.59</td><td>51.02%</td></tr><tr><td>3</td><td>Contexto base</td><td>Prioridad no expropiativa</td><td>Worst Fit</td><td><span class="score-pill">5.50</span></td><td>95.59</td><td>52.31%</td></tr><tr><td>4</td><td>Contexto base</td><td>SJF no expropiativo</td><td>First Fit</td><td><span class="score-pill">6.33</span></td><td>99.86</td><td>54.35%</td></tr><tr><td>5</td><td>Contexto base</td><td>SJF no expropiativo</td><td>Best Fit</td><td><span class="score-pill">7.00</span></td><td>100.31</td><td>51.69%</td></tr><tr><td>6</td><td>Contexto base</td><td>SJF expropiativo</td><td>First Fit</td><td><span class="score-pill">7.50</span></td><td>98.72</td><td>54.49%</td></tr><tr><td>7</td><td>Contexto base</td><td>SJF no expropiativo</td><td>Worst Fit</td><td><span class="score-pill">7.67</span></td><td>100.31</td><td>57.14%</td></tr><tr><td>8</td><td>Contexto base</td><td>SJF expropiativo</td><td>Best Fit</td><td><span class="score-pill">8.50</span></td><td>98.72</td><td>54.23%</td></tr><tr><td>9</td><td>Contexto base</td><td>FCFS</td><td>First Fit</td><td><span class="score-pill">9.00</span></td><td>147.91</td><td>22.63%</td></tr><tr><td>10</td><td>Contexto base</td><td>SJF expropiativo</td><td>Worst Fit</td><td><span class="score-pill">9.50</span></td><td>98.72</td><td>55.22%</td></tr><tr><td>11</td><td>Contexto base</td><td>FCFS</td><td>Best Fit</td><td><span class="score-pill">10.00</span></td><td>147.91</td><td>22.84%</td></tr><tr><td>12</td><td>Contexto base</td><td>FCFS</td><td>Worst Fit</td><td><span class="score-pill">11.00</span></td><td>147.91</td><td>26.50%</td></tr><tr><td>13</td><td>Contexto base</td><td>Prioridad expropiativa</td><td>First Fit</td><td><span class="score-pill">12.00</span></td><td>107.07</td><td>55.18%</td></tr><tr><td>14</td><td>Contexto base</td><td>Prioridad expropiativa</td><td>Best Fit</td><td><span class="score-pill">13.17</span></td><td>107.07</td><td>56.29%</td></tr><tr><td>15</td><td>Contexto base</td><td>Round Robin</td><td>Worst Fit</td><td><span class="score-pill">13.83</span></td><td>158.66</td><td>44.73%</td></tr><tr><td>16</td><td>Contexto base</td><td>Prioridad expropiativa</td><td>Worst Fit</td><td><span class="score-pill">13.83</span></td><td>107.07</td><td>56.00%</td></tr><tr><td>17</td><td>Contexto base</td><td>Round Robin</td><td>Best Fit</td><td><span class="score-pill">14.00</span></td><td>158.92</td><td>43.85%</td></tr><tr><td>18</td><td>Contexto base</td><td>Round Robin</td><td>First Fit</td><td><span class="score-pill">14.17</span></td><td>158.63</td><td>42.05%</td></tr></tbody></table>
+        </div>
+        <div class="panel">
+            <div class="section-title">
+                <div>
+                    <p class="eyebrow">Ranking</p>
+                    <h2>Memoria</h2>
+                </div>
+            </div>
+            <table><thead><tr><th>#</th><th>Contexto</th><th>Planificacion</th><th>Memoria</th><th>Score</th><th>TAT</th><th>Frag.</th></tr></thead><tbody><tr><td>1</td><td>Contexto base</td><td>FCFS</td><td>First Fit</td><td><span class="score-pill">1.00</span></td><td>147.91</td><td>22.63%</td></tr><tr><td>2</td><td>Contexto base</td><td>FCFS</td><td>Best Fit</td><td><span class="score-pill">2.00</span></td><td>147.91</td><td>22.84%</td></tr><tr><td>3</td><td>Contexto base</td><td>FCFS</td><td>Worst Fit</td><td><span class="score-pill">3.00</span></td><td>147.91</td><td>26.50%</td></tr><tr><td>4</td><td>Contexto base</td><td>Round Robin</td><td>Worst Fit</td><td><span class="score-pill">9.00</span></td><td>158.66</td><td>44.73%</td></tr><tr><td>5</td><td>Contexto base</td><td>SJF no expropiativo</td><td>Best Fit</td><td><span class="score-pill">9.33</span></td><td>100.31</td><td>51.69%</td></tr><tr><td>6</td><td>Contexto base</td><td>Round Robin</td><td>First Fit</td><td><span class="score-pill">9.33</span></td><td>158.63</td><td>42.05%</td></tr><tr><td>7</td><td>Contexto base</td><td>Prioridad no expropiativa</td><td>Best Fit</td><td><span class="score-pill">9.67</span></td><td>95.59</td><td>51.02%</td></tr><tr><td>8</td><td>Contexto base</td><td>SJF no expropiativo</td><td>First Fit</td><td><span class="score-pill">10.33</span></td><td>99.86</td><td>54.35%</td></tr><tr><td>9</td><td>Contexto base</td><td>Prioridad no expropiativa</td><td>First Fit</td><td><span class="score-pill">10.33</span></td><td>95.59</td><td>52.68%</td></tr><tr><td>10</td><td>Contexto base</td><td>Prioridad no expropiativa</td><td>Worst Fit</td><td><span class="score-pill">10.33</span></td><td>95.59</td><td>52.31%</td></tr><tr><td>11</td><td>Contexto base</td><td>Round Robin</td><td>Best Fit</td><td><span class="score-pill">10.83</span></td><td>158.92</td><td>43.85%</td></tr><tr><td>12</td><td>Contexto base</td><td>Prioridad expropiativa</td><td>First Fit</td><td><span class="score-pill">11.17</span></td><td>107.07</td><td>55.18%</td></tr><tr><td>13</td><td>Contexto base</td><td>SJF expropiativo</td><td>First Fit</td><td><span class="score-pill">11.67</span></td><td>98.72</td><td>54.49%</td></tr><tr><td>14</td><td>Contexto base</td><td>SJF expropiativo</td><td>Best Fit</td><td><span class="score-pill">11.83</span></td><td>98.72</td><td>54.23%</td></tr><tr><td>15</td><td>Contexto base</td><td>SJF no expropiativo</td><td>Worst Fit</td><td><span class="score-pill">12.00</span></td><td>100.31</td><td>57.14%</td></tr><tr><td>16</td><td>Contexto base</td><td>Prioridad expropiativa</td><td>Best Fit</td><td><span class="score-pill">12.50</span></td><td>107.07</td><td>56.29%</td></tr><tr><td>17</td><td>Contexto base</td><td>Prioridad expropiativa</td><td>Worst Fit</td><td><span class="score-pill">13.17</span></td><td>107.07</td><td>56.00%</td></tr><tr><td>18</td><td>Contexto base</td><td>SJF expropiativo</td><td>Worst Fit</td><td><span class="score-pill">13.50</span></td><td>98.72</td><td>55.22%</td></tr></tbody></table>
+        </div>
+    </section>
+
+    
+            <section class="panel">
+                <div class="section-title">
+                    <div>
+                        <p class="eyebrow">Matriz</p>
+                        <h2>Contexto base</h2>
+                    </div>
+                    <p>La celda muestra TAT, fragmentacion externa y CPU. Verde suele ser mejor.</p>
+                </div>
+                <table class="matrix"><thead><tr><th>Planificacion</th><th>First Fit</th><th>Best Fit</th><th>Worst Fit</th></tr></thead><tbody><tr><td>FCFS</td><td style="background:#d7b961">TAT 147.91<small>Frag 22.63% · CPU 98.6%</small></td><td style="background:#d8b961">TAT 147.91<small>Frag 22.84% · CPU 98.6%</small></td><td style="background:#dbb860">TAT 147.91<small>Frag 26.50% · CPU 98.6%</small></td></tr><tr><td>SJF no expropiativo</td><td style="background:#c8b967">TAT 99.86<small>Frag 54.35% · CPU 98.5%</small></td><td style="background:#c6ba68">TAT 100.31<small>Frag 51.69% · CPU 98.5%</small></td><td style="background:#cbb966">TAT 100.31<small>Frag 57.14% · CPU 98.5%</small></td></tr><tr><td>SJF expropiativo</td><td style="background:#c7b967">TAT 98.72<small>Frag 54.49% · CPU 98.2%</small></td><td style="background:#c7b967">TAT 98.72<small>Frag 54.23% · CPU 98.2%</small></td><td style="background:#c7b967">TAT 98.72<small>Frag 55.22% · CPU 98.2%</small></td></tr><tr><td>Round Robin</td><td style="background:#e2ad5f">TAT 158.63<small>Frag 42.05% · CPU 97.1%</small></td><td style="background:#e2ac5f">TAT 158.92<small>Frag 43.85% · CPU 91.0%</small></td><td style="background:#e2ac60">TAT 158.66<small>Frag 44.73% · CPU 97.2%</small></td></tr><tr><td>Prioridad no expropiativa</td><td style="background:#c2ba69">TAT 95.59<small>Frag 52.68% · CPU 98.6%</small></td><td style="background:#c0ba6a">TAT 95.59<small>Frag 51.02% · CPU 98.6%</small></td><td style="background:#c2ba69">TAT 95.59<small>Frag 52.31% · CPU 98.6%</small></td></tr><tr><td>Prioridad expropiativa</td><td style="background:#cfb964">TAT 107.07<small>Frag 55.18% · CPU 98.1%</small></td><td style="background:#d1b964">TAT 107.07<small>Frag 56.29% · CPU 98.1%</small></td><td style="background:#d0b964">TAT 107.07<small>Frag 56.00% · CPU 98.1%</small></td></tr></tbody></table><div class="legend"><span><i class="swatch" style="background:#5fbf8f"></i>mejor</span><span><i class="swatch" style="background:#e2b85d"></i>medio</span><span><i class="swatch" style="background:#e26d6d"></i>peor</span></div>
+            </section>
+            
+
+    <section class="panel">
+        <div class="section-title">
+            <div>
+                <p class="eyebrow">Detalle</p>
+                <h2>Todas las combinaciones</h2>
+            </div>
+            <p>Sirve para justificar la conclusion con numeros concretos.</p>
+        </div>
+        <table><thead><tr><th>Contexto</th><th>Planificacion</th><th>Memoria</th><th>Ready</th><th>TAT</th><th>Resp.</th><th>CPU %</th><th>Throughput</th><th>Frag.</th><th>Waste MB</th><th>Swaps</th></tr></thead><tbody><tr><td>Contexto base</td><td>FCFS</td><td>Best Fit</td><td>110.60</td><td>147.91</td><td>70.86</td><td>98.6</td><td>0.0822</td><td>22.84%</td><td>0.00</td><td>9</td></tr><tr><td>Contexto base</td><td>FCFS</td><td>First Fit</td><td>110.60</td><td>147.91</td><td>70.86</td><td>98.6</td><td>0.0822</td><td>22.63%</td><td>0.00</td><td>9</td></tr><tr><td>Contexto base</td><td>FCFS</td><td>Worst Fit</td><td>110.60</td><td>147.91</td><td>70.86</td><td>98.6</td><td>0.0822</td><td>26.50%</td><td>0.00</td><td>10</td></tr><tr><td>Contexto base</td><td>Prioridad expropiativa</td><td>Best Fit</td><td>66.30</td><td>107.07</td><td>71.86</td><td>98.1</td><td>0.0798</td><td>56.29%</td><td>0.00</td><td>11</td></tr><tr><td>Contexto base</td><td>Prioridad expropiativa</td><td>First Fit</td><td>66.16</td><td>107.07</td><td>71.86</td><td>98.1</td><td>0.0798</td><td>55.18%</td><td>0.00</td><td>11</td></tr><tr><td>Contexto base</td><td>Prioridad expropiativa</td><td>Worst Fit</td><td>66.16</td><td>107.07</td><td>71.86</td><td>98.1</td><td>0.0798</td><td>56.00%</td><td>0.00</td><td>11</td></tr><tr><td>Contexto base</td><td>Prioridad no expropiativa</td><td>Best Fit</td><td>61.33</td><td>95.59</td><td>69.39</td><td>98.6</td><td>0.0849</td><td>51.02%</td><td>0.00</td><td>11</td></tr><tr><td>Contexto base</td><td>Prioridad no expropiativa</td><td>First Fit</td><td>61.33</td><td>95.59</td><td>69.39</td><td>98.6</td><td>0.0849</td><td>52.68%</td><td>0.00</td><td>11</td></tr><tr><td>Contexto base</td><td>Prioridad no expropiativa</td><td>Worst Fit</td><td>61.33</td><td>95.59</td><td>69.39</td><td>98.6</td><td>0.0849</td><td>52.31%</td><td>0.00</td><td>11</td></tr><tr><td>Contexto base</td><td>Round Robin</td><td>Best Fit</td><td>105.48</td><td>158.92</td><td>51.72</td><td>91.0</td><td>0.0794</td><td>43.85%</td><td>0.00</td><td>13</td></tr><tr><td>Contexto base</td><td>Round Robin</td><td>First Fit</td><td>101.78</td><td>158.63</td><td>56.40</td><td>97.1</td><td>0.0789</td><td>42.05%</td><td>0.00</td><td>13</td></tr><tr><td>Contexto base</td><td>Round Robin</td><td>Worst Fit</td><td>102.46</td><td>158.66</td><td>55.19</td><td>97.2</td><td>0.0790</td><td>44.73%</td><td>0.00</td><td>12</td></tr><tr><td>Contexto base</td><td>SJF expropiativo</td><td>Best Fit</td><td>56.76</td><td>98.72</td><td>71.78</td><td>98.2</td><td>0.0815</td><td>54.23%</td><td>0.00</td><td>12</td></tr><tr><td>Contexto base</td><td>SJF expropiativo</td><td>First Fit</td><td>56.76</td><td>98.72</td><td>71.78</td><td>98.2</td><td>0.0815</td><td>54.49%</td><td>0.00</td><td>12</td></tr><tr><td>Contexto base</td><td>SJF expropiativo</td><td>Worst Fit</td><td>56.76</td><td>98.72</td><td>71.78</td><td>98.2</td><td>0.0815</td><td>55.22%</td><td>0.00</td><td>12</td></tr><tr><td>Contexto base</td><td>SJF no expropiativo</td><td>Best Fit</td><td>60.41</td><td>100.31</td><td>74.17</td><td>98.5</td><td>0.0859</td><td>51.69%</td><td>0.00</td><td>12</td></tr><tr><td>Contexto base</td><td>SJF no expropiativo</td><td>First Fit</td><td>60.13</td><td>99.86</td><td>74.58</td><td>98.5</td><td>0.0859</td><td>54.35%</td><td>0.00</td><td>12</td></tr><tr><td>Contexto base</td><td>SJF no expropiativo</td><td>Worst Fit</td><td>60.33</td><td>100.31</td><td>74.17</td><td>98.5</td><td>0.0859</td><td>57.14%</td><td>0.00</td><td>12</td></tr></tbody></table>
+    </section>
+
+    <section class="panel" style="margin-top:18px">
+        <div class="section-title">
+            <div>
+                <p class="eyebrow">Procesos</p>
+                <h2>Peores TAT observados</h2>
+            </div>
+            <p>Ayuda a encontrar politicas donde ciertos procesos se castigan demasiado.</p>
+        </div>
+        <table><thead><tr><th>Contexto</th><th>Planificacion</th><th>Memoria</th><th>Proceso</th><th>TAT</th><th>Ready</th><th>Resp.</th><th>Blocked</th></tr></thead><tbody><tr><td>Contexto base</td><td>Prioridad expropiativa</td><td>First Fit</td><td>T10</td><td>245.70</td><td>220.70</td><td>214.50</td><td>0.00</td></tr><tr><td>Contexto base</td><td>Prioridad expropiativa</td><td>Best Fit</td><td>T10</td><td>245.70</td><td>220.70</td><td>214.50</td><td>0.00</td></tr><tr><td>Contexto base</td><td>Prioridad expropiativa</td><td>Worst Fit</td><td>T10</td><td>245.70</td><td>220.70</td><td>214.50</td><td>0.00</td></tr><tr><td>Contexto base</td><td>Round Robin</td><td>First Fit</td><td>T18</td><td>244.40</td><td>32.90</td><td>198.30</td><td>15.90</td></tr><tr><td>Contexto base</td><td>Round Robin</td><td>Worst Fit</td><td>T18</td><td>244.10</td><td>28.90</td><td>201.20</td><td>15.90</td></tr><tr><td>Contexto base</td><td>Round Robin</td><td>Best Fit</td><td>T18</td><td>243.00</td><td>25.60</td><td>206.60</td><td>15.90</td></tr><tr><td>Contexto base</td><td>SJF expropiativo</td><td>First Fit</td><td>T10</td><td>240.50</td><td>215.50</td><td>215.50</td><td>0.00</td></tr><tr><td>Contexto base</td><td>SJF expropiativo</td><td>Best Fit</td><td>T10</td><td>240.50</td><td>215.50</td><td>215.50</td><td>0.00</td></tr><tr><td>Contexto base</td><td>SJF expropiativo</td><td>Worst Fit</td><td>T10</td><td>240.50</td><td>215.50</td><td>215.50</td><td>0.00</td></tr><tr><td>Contexto base</td><td>Round Robin</td><td>Worst Fit</td><td>T14</td><td>239.90</td><td>22.30</td><td>199.70</td><td>15.30</td></tr><tr><td>Contexto base</td><td>Round Robin</td><td>First Fit</td><td>T16</td><td>238.90</td><td>37.60</td><td>194.20</td><td>14.20</td></tr><tr><td>Contexto base</td><td>Round Robin</td><td>First Fit</td><td>T14</td><td>236.80</td><td>63.00</td><td>175.20</td><td>15.30</td></tr><tr><td>Contexto base</td><td>FCFS</td><td>First Fit</td><td>T18</td><td>234.40</td><td>105.20</td><td>168.50</td><td>15.90</td></tr><tr><td>Contexto base</td><td>FCFS</td><td>Best Fit</td><td>T18</td><td>234.40</td><td>105.20</td><td>168.50</td><td>15.90</td></tr><tr><td>Contexto base</td><td>FCFS</td><td>Worst Fit</td><td>T18</td><td>234.40</td><td>105.20</td><td>168.50</td><td>15.90</td></tr></tbody></table>
+    </section>
+
+    <section class="panel" style="margin-top:18px">
+        <div class="section-title">
+            <div>
+                <p class="eyebrow">Metricas</p>
+                <h2>Lectura rapida</h2>
+            </div>
+        </div>
+        <table>
+            <tbody>
+                <tr><td><strong>Ready</strong></td><td>Tiempo promedio esperando CPU.</td></tr>
+                <tr><td><strong>TAT</strong></td><td>Tiempo desde llegada hasta finalizacion.</td></tr>
+                <tr><td><strong>Resp.</strong></td><td>Tiempo hasta la primera entrada a CPU.</td></tr>
+                <tr><td><strong>CPU %</strong></td><td>Porcentaje del tiempo total en ejecucion.</td></tr>
+                <tr><td><strong>Frag ext %</strong></td><td>Que tan partida queda la memoria libre.</td></tr>
+                <tr><td><strong>Waste MB</strong></td><td>Desperdicio interno por redondeo a bloques.</td></tr>
+            </tbody>
+        </table>
+    </section>
+
+    <section class="panel" style="margin-top:18px">
+        <div class="section-title">
+            <div>
+                <p class="eyebrow">Archivo</p>
+                <h2>Salida generada</h2>
+            </div>
+        </div>
+        <div class="files">
+            <div class="file"><code>docs/final/comparisons/comparison_report.html</code><br>Informe visual autocontenido.</div>
+        </div>
+    </section>
+</main>
+</body>
+</html>
