@@ -63,12 +63,24 @@ class StateChip(QLabel):
 
 
 class GanttWidget(QWidget):
+    FIT_MODE = "fit"
+    SLIDE_MODE = "slide"
+    SLIDE_PIXELS_PER_TIME_UNIT = 18
+    DRAG_THRESHOLD_PX = 4
+
     def __init__(self):
         super().__init__()
         self.segments: list[dict] = []
         self.total_time = 1.0
+        self.mode = self.FIT_MODE
+        self.scroll_x = 0
+        self._press_x = 0
+        self._press_scroll_x = 0
+        self._dragging = False
+        self._auto_follow = True
         self.setMinimumHeight(104)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def set_segments(self, segments: list[dict], total_time: float | None = None) -> None:
         self.segments = segments
@@ -78,11 +90,17 @@ class GanttWidget(QWidget):
             )
         else:
             self.total_time = max(1.0, float(total_time))
+        if self.mode == self.SLIDE_MODE and self._auto_follow:
+            self.scroll_x = self._max_scroll_x()
+        else:
+            self._clamp_scroll_x()
         self.update()
 
     def clear(self) -> None:
         self.segments = []
         self.total_time = 1.0
+        self.scroll_x = 0
+        self._auto_follow = True
         self.update()
 
     def paintEvent(self, event) -> None:
@@ -107,6 +125,18 @@ class GanttWidget(QWidget):
             painter.drawText(0, 0, width, height, Qt.AlignmentFlag.AlignCenter, "[ Diagrama de Gantt ]")
             return
 
+        content_width = self._content_width()
+        painter.setPen(QColor("#8b949e"))
+        painter.setFont(QFont("Courier New", 7))
+        painter.drawText(
+            0,
+            4,
+            width,
+            16,
+            Qt.AlignmentFlag.AlignRight,
+            "SLIDE" if self.mode == self.SLIDE_MODE else "AJUSTE",
+        )
+
         for seg in self.segments:
             start = float(seg.get("start", 0))
             duration = float(seg.get("duration", 0))
@@ -115,18 +145,22 @@ class GanttWidget(QWidget):
             if duration <= 0:
                 continue
 
-            x1 = int((start / self.total_time) * width)
-            x2 = int((limit / self.total_time) * width)
+            x1 = self._time_to_x(start, content_width)
+            x2 = self._time_to_x(limit, content_width)
             block_w = max(x2 - x1, 3)
+            visible_x1 = x1 - self.scroll_x
+            visible_x2 = x2 - self.scroll_x
+            if visible_x2 < 0 or visible_x1 > width:
+                continue
             color = str(seg.get("color", "#00d4ff"))
 
-            grad = QLinearGradient(x1, bar_y, x1, bar_y + bar_h)
+            grad = QLinearGradient(visible_x1, bar_y, visible_x1, bar_y + bar_h)
             c = QColor(color)
             grad.setColorAt(0, QColor(c.red(), c.green(), c.blue(), 220))
             grad.setColorAt(1, QColor(c.red(), c.green(), c.blue(), 90))
-            painter.fillRect(x1, bar_y, block_w, bar_h, grad)
+            painter.fillRect(visible_x1, bar_y, block_w, bar_h, grad)
             painter.setPen(QPen(QColor(color), 1))
-            painter.drawRect(x1, bar_y, block_w, bar_h)
+            painter.drawRect(visible_x1, bar_y, block_w, bar_h)
 
             min_label_width = 12 if kind == "CONTEXT_SWITCH" else 28
             if block_w > min_label_width:
@@ -134,7 +168,7 @@ class GanttWidget(QWidget):
                 font_size = 7 if kind == "CONTEXT_SWITCH" else 8
                 painter.setFont(QFont("Courier New", font_size, QFont.Weight.Bold))
                 painter.drawText(
-                    x1 + 2,
+                    visible_x1 + 2,
                     bar_y,
                     block_w - 4,
                     bar_h,
@@ -147,9 +181,9 @@ class GanttWidget(QWidget):
                 painter.setFont(QFont("Courier New", 7))
 
                 # Inicio debajo del extremo izquierdo del segmento.
-                painter.drawLine(x1, bar_y + bar_h, x1, bar_y + bar_h + 4)
+                painter.drawLine(visible_x1, bar_y + bar_h, visible_x1, bar_y + bar_h + 4)
                 painter.drawText(
-                    x1 + 2,
+                    visible_x1 + 2,
                     bottom_label_y,
                     max(1, block_w - 4),
                     time_label_h,
@@ -158,15 +192,111 @@ class GanttWidget(QWidget):
                 )
 
                 # Límite encima del extremo derecho del segmento.
-                painter.drawLine(x2, bar_y - 4, x2, bar_y)
+                painter.drawLine(visible_x2, bar_y - 4, visible_x2, bar_y)
                 painter.drawText(
-                    x1 + 2,
+                    visible_x1 + 2,
                     top_label_y,
                     max(1, block_w - 4),
                     time_label_h,
                     Qt.AlignmentFlag.AlignRight,
                     f"{limit:.1f}",
                 )
+
+        if self.mode == self.SLIDE_MODE and content_width > width:
+            self._paint_scrollbar(painter, content_width, width, height)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() != Qt.MouseButton.LeftButton:
+            super().mousePressEvent(event)
+            return
+        self._press_x = int(event.position().x())
+        self._press_scroll_x = self.scroll_x
+        self._dragging = False
+        self.setCursor(Qt.CursorShape.ClosedHandCursor if self.mode == self.SLIDE_MODE else Qt.CursorShape.PointingHandCursor)
+        event.accept()
+
+    def mouseMoveEvent(self, event) -> None:
+        if self.mode != self.SLIDE_MODE or not (event.buttons() & Qt.MouseButton.LeftButton):
+            super().mouseMoveEvent(event)
+            return
+
+        delta_x = int(event.position().x()) - self._press_x
+        if abs(delta_x) >= self.DRAG_THRESHOLD_PX:
+            self._dragging = True
+            self._auto_follow = False
+            self.scroll_x = self._press_scroll_x - delta_x
+            self._clamp_scroll_x()
+            self.update()
+        event.accept()
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() != Qt.MouseButton.LeftButton:
+            super().mouseReleaseEvent(event)
+            return
+
+        if not self._dragging:
+            self._toggle_mode()
+
+        self.setCursor(Qt.CursorShape.OpenHandCursor if self.mode == self.SLIDE_MODE else Qt.CursorShape.PointingHandCursor)
+        event.accept()
+
+    def wheelEvent(self, event) -> None:
+        if self.mode != self.SLIDE_MODE:
+            super().wheelEvent(event)
+            return
+
+        delta = event.angleDelta().x() or event.angleDelta().y()
+        self.scroll_x -= int(delta / 120 * 90)
+        self._auto_follow = False
+        self._clamp_scroll_x()
+        self.update()
+        event.accept()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if self.mode == self.SLIDE_MODE and self._auto_follow:
+            self.scroll_x = self._max_scroll_x()
+        else:
+            self._clamp_scroll_x()
+
+    def _toggle_mode(self) -> None:
+        if self.mode == self.FIT_MODE:
+            self.mode = self.SLIDE_MODE
+            self._auto_follow = True
+            self.scroll_x = self._max_scroll_x()
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
+        else:
+            self.mode = self.FIT_MODE
+            self.scroll_x = 0
+            self._auto_follow = True
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.update()
+
+    def _content_width(self) -> int:
+        if self.mode == self.FIT_MODE:
+            return max(1, self.width())
+        return max(self.width(), int(self.total_time * self.SLIDE_PIXELS_PER_TIME_UNIT))
+
+    def _time_to_x(self, time_value: float, content_width: int) -> int:
+        if self.mode == self.FIT_MODE:
+            return int((time_value / self.total_time) * content_width)
+        return int(time_value * self.SLIDE_PIXELS_PER_TIME_UNIT)
+
+    def _max_scroll_x(self) -> int:
+        return max(0, self._content_width() - self.width())
+
+    def _clamp_scroll_x(self) -> None:
+        self.scroll_x = max(0, min(self.scroll_x, self._max_scroll_x()))
+
+    def _paint_scrollbar(self, painter: QPainter, content_width: int, width: int, height: int) -> None:
+        track_y = height - 7
+        track_h = 3
+        thumb_w = max(24, int((width / content_width) * width))
+        max_scroll = max(1, content_width - width)
+        thumb_x = int((self.scroll_x / max_scroll) * (width - thumb_w))
+
+        painter.fillRect(0, track_y, width, track_h, QColor("#161b22"))
+        painter.fillRect(thumb_x, track_y, thumb_w, track_h, QColor("#00d4ff"))
 
 
 class MemoryMapWidget(QWidget):

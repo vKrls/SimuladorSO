@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
 from gui.components.execute_tab import Execute_Tab
@@ -10,7 +10,7 @@ from gui.services.simulation_service import SimulationService
 
 
 class Center(QWidget):
-    LEFT_PANEL_WIDTH = 480
+    LEFT_PANEL_WIDTH = ProcessTable.PANEL_WIDTH
 
     def __init__(self, client: SimulationService, alg: str = ""):
         super().__init__()
@@ -19,14 +19,18 @@ class Center(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setHandleWidth(2)
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter.setHandleWidth(2)
         left = self._left()
         left.setMinimumWidth(self.LEFT_PANEL_WIDTH)
-        splitter.addWidget(left)
-        splitter.addWidget(self._right())
-        splitter.setSizes([self.LEFT_PANEL_WIDTH, 900])
-        layout.addWidget(splitter)
+        self.splitter.addWidget(left)
+        self.splitter.addWidget(self._right())
+        self.splitter.setCollapsible(0, False)
+        self.splitter.setStretchFactor(0, 0)
+        self.splitter.setStretchFactor(1, 1)
+        self._set_initial_splitter_size()
+        QTimer.singleShot(0, self._set_initial_splitter_size)
+        layout.addWidget(self.splitter)
 
     def _left(self) -> QWidget:
         widget = QWidget()
@@ -42,3 +46,6 @@ class Center(QWidget):
     def _right(self) -> Execute_Tab:
         self.execute_tab = Execute_Tab()
         return self.execute_tab
+
+    def _set_initial_splitter_size(self) -> None:
+        self.splitter.setSizes([self.LEFT_PANEL_WIDTH, 10000])

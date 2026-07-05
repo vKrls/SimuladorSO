@@ -164,12 +164,14 @@ class ProcessCard(QFrame):
 
 
 class ProcessTable(QGroupBox):
+    PANEL_WIDTH = ProcessCard.CARD_WIDTH + 24
+
     def __init__(self, alg: str = ""):
         super().__init__("TABLA DE PROCESOS")
         self.alg = alg
         self._show_priority = alg == "pr" or "priority" in alg
         self._cards: dict[int, ProcessCard] = {}
-        self.setMinimumWidth(ProcessCard.CARD_WIDTH + 24)
+        self.setMinimumWidth(self.PANEL_WIDTH)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 10, 8, 8)
