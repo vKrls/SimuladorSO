@@ -35,6 +35,20 @@ class Header(QFrame):
         layout.addWidget(self.desc)
         layout.addStretch()
 
+        self.quantum_label = QLabel("Quantum:")
+        self.quantum_label.setStyleSheet("color: #8b949e; font-size: 9px;")
+        self.quantum_label.setVisible(False)
+        layout.addWidget(self.quantum_label)
+
+        self.quantum = QDoubleSpinBox()
+        self.quantum.setRange(0.1, 500.0)
+        self.quantum.setDecimals(1)
+        self.quantum.setSingleStep(0.1)
+        self.quantum.setSuffix(" u.t.")
+        self.quantum.setFixedWidth(94)
+        self.quantum.setVisible(False)
+        layout.addWidget(self.quantum)
+
         memory_label = QLabel("Memoria:")
         memory_label.setStyleSheet("color: #8b949e; font-size: 9px;")
         layout.addWidget(memory_label)
@@ -78,3 +92,7 @@ class Header(QFrame):
     def set_state(self, text: str, color: str = "#8b949e") -> None:
         self.state.setText(text)
         self.state.setStyleSheet(f"color: {color}; font-size: 10px; font-weight: bold;")
+
+    def set_quantum_visible(self, visible: bool) -> None:
+        self.quantum_label.setVisible(visible)
+        self.quantum.setVisible(visible)

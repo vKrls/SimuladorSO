@@ -306,6 +306,7 @@ class Execute_Tab(QTabWidget):
         mode = QHeaderView.ResizeMode.Stretch if stretch else QHeaderView.ResizeMode.ResizeToContents
         table.horizontalHeader().setSectionResizeMode(mode)
         table.verticalHeader().setVisible(False)
+        table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         table.setAlternatingRowColors(True)
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)

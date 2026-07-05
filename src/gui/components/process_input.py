@@ -68,14 +68,6 @@ class Process_Input(QGroupBox):
             self.input_priority.setValue(3)
             form.addRow("Prioridad:", self.input_priority)
 
-        if self.alg == "rr":
-            self.input_quantum = QDoubleSpinBox()
-            self.input_quantum.setRange(0.1, 500.0)
-            self.input_quantum.setDecimals(1)
-            self.input_quantum.setValue(5.0)
-            self.input_quantum.setSuffix(" u.t.")
-            form.addRow("Quantum:", self.input_quantum)
-
         return widget
 
     def _button_area(self) -> QWidget:
@@ -133,8 +125,6 @@ class Process_Input(QGroupBox):
             memory=self.input_memory.value() * 1024,
             arrival_time=self.input_arrival.value(),
         )
-        if self.alg == "rr":
-            process_data.quantum = self.input_quantum.value()
         if self.alg == "pr":
             process_data.priority = self.input_priority.value()
         return process_data

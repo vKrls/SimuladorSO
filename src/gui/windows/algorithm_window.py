@@ -71,6 +71,10 @@ class AlgorithmWindow(QWidget):
         )
         header.switch_cost.setValue(self.client.switch_cost_for(self.algorithm))
         header.switch_cost.valueChanged.connect(self.change_switch_cost)
+        if self.input_mode == "rr":
+            header.set_quantum_visible(True)
+            header.quantum.setValue(self.client.quantum_for(self.algorithm))
+            header.quantum.valueChanged.connect(self.change_quantum)
         return header
 
     def _center(self, title: str) -> Center:
@@ -83,11 +87,6 @@ class AlgorithmWindow(QWidget):
         process_input.btn_kill.clicked.connect(self.stop_simulation)
         process_input.btn_clean.clicked.connect(self.clear_processes)
         process_input.slider_speed.valueChanged.connect(self.change_speed)
-        if self.input_mode == "rr":
-            process_input.input_quantum.setValue(
-                self.client.quantum_for(self.algorithm)
-            )
-            process_input.input_quantum.valueChanged.connect(self.change_quantum)
         center.execute_tab.command_submitted.connect(self.send_log_command)
         algorithm_label = {
             "fcfs": "FCFS",
