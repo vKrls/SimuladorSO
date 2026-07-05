@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
 from gui.components.execute_tab import Execute_Tab
 from gui.components.process_input import Process_Input
-from gui.components.process_queue import Process_Queue
+from gui.components.process_table import ProcessTable
 from gui.services.simulation_service import SimulationService
 
 
@@ -34,9 +34,9 @@ class Center(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
         self.process_input = Process_Input(self.alg)
-        self.process_queue = Process_Queue(self.alg)
+        self.process_table = ProcessTable(self.alg)
         layout.addWidget(self.process_input)
-        layout.addWidget(self.process_queue, 1)
+        layout.addWidget(self.process_table, 1)
         return widget
 
     def _right(self) -> Execute_Tab:

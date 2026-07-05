@@ -15,8 +15,7 @@ void sleep_us(unsigned int microseconds)
 
 	delay.tv_sec = microseconds / 1000000U;
 	delay.tv_nsec = (long)(microseconds % 1000000U) * 1000L;
-	while (nanosleep(&delay, &delay) == -1 && errno == EINTR)
-		;
+	while (nanosleep(&delay, &delay) == -1 && errno == EINTR);
 }
 
 bool stdin_has_data(void)

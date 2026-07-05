@@ -27,6 +27,11 @@ from gui.domain.models import SimulationResult, UiProcess
 
 
 class Execute_Tab(QTabWidget):
+    EXECUTION_TAB = 0
+    STATS_TAB = 1
+    PCB_TAB = 2
+    SYSTEM_TAB = 3
+
     command_submitted = Signal(str)
 
     def __init__(self):
@@ -34,12 +39,16 @@ class Execute_Tab(QTabWidget):
         self.metrics: dict[str, QLabel] = {}
         self.counters: dict[str, QLabel] = {}
         self.device_counters: dict[str, QLabel] = {}
+        self._last_processes: list[UiProcess] = []
+        self._last_system_processes: list[UiProcess] = []
+        self._last_state: dict = {}
 
         self.addTab(self._build_execution_tab(), "Ejecución")
         self.addTab(self._build_stats_tab(), "Estadísticas")
         self.addTab(self._build_pcb_tab(), "PCB")
         self.addTab(self._build_system_tab(), "Procesos del SO")
         self.addTab(self._build_log_tab(), "Log")
+        self.currentChanged.connect(self._refresh_current_tab)
 
     def _build_execution_tab(self) -> QWidget:
         widget = QWidget()
@@ -309,32 +318,37 @@ class Execute_Tab(QTabWidget):
         processes: list[UiProcess],
         system_processes: list[UiProcess] | None = None,
     ) -> None:
-        self._fill_stats_table(processes)
-        self._fill_pcb_table(processes)
-        self.set_system_processes(system_processes or [])
-        self._update_counters(processes)
-        self._update_device_counters(processes)
-        self._update_cpu_panel(processes, [], None)
+        self._last_processes = processes
+        self._last_system_processes = system_processes or []
+        self._last_state = {}
+        self._refresh_current_tab()
 
     def set_system_processes(self, processes: list[UiProcess]) -> None:
-        self.system_table.setRowCount(len(processes))
-        for row, process in enumerate(processes):
-            values = [
-                process.pid,
-                process.name,
-                STATE_LABELS.get(process.state, process.state),
-                process.memory_block_address,
-                self._memory(process.memory_base),
-                self._memory(process.memory_limit),
-                self._memory(process.memory),
-                process.assigned_blocks,
-                "Sí" if process.resident else "No",
-            ]
-            self._set_row(self.system_table, row, values, process)
+        self.system_table.setUpdatesEnabled(False)
+        try:
+            self.system_table.setRowCount(len(processes))
+            for row, process in enumerate(processes):
+                values = [
+                    process.pid,
+                    process.name,
+                    STATE_LABELS.get(process.state, process.state),
+                    process.memory_block_address,
+                    self._memory(process.memory_base),
+                    self._memory(process.memory_limit),
+                    self._memory(process.memory),
+                    process.assigned_blocks,
+                    "Sí" if process.resident else "No",
+                ]
+                self._set_row(self.system_table, row, values, process)
+        finally:
+            self.system_table.setUpdatesEnabled(True)
 
     def clear(self) -> None:
         self.gantt.clear()
         self.memory_map.clear()
+        self._last_processes = []
+        self._last_system_processes = []
+        self._last_state = {}
         self.stats_table.setRowCount(0)
         self.pcb_table.setRowCount(0)
         self.system_table.setRowCount(0)
@@ -358,12 +372,10 @@ class Execute_Tab(QTabWidget):
     ) -> None:
         self.status.setText("Comandos enviados a C" if result.ok else "No se pudo comunicar con C")
         if processes is not None:
-            self._fill_stats_table(processes)
-            self._fill_pcb_table(processes)
-            self.set_system_processes(system_processes or [])
-            self._update_counters(processes)
-            self._update_device_counters(processes)
-            self._update_cpu_panel(processes, [], None)
+            self._last_processes = processes
+            self._last_system_processes = system_processes or []
+            self._last_state = {}
+            self._refresh_current_tab()
 
         if result.stdout_lines:
             for line in result.stdout_lines:
@@ -388,10 +400,13 @@ class Execute_Tab(QTabWidget):
             self._fill_metrics(stats.get("summary", {}))
 
         if processes is not None:
-            self._fill_stats_table(processes)
-            self._fill_pcb_table(processes)
-            self._update_counters(processes)
-            self._update_cpu_panel(processes, segments, None)
+            self._last_processes = processes
+            self._last_state = {
+                "gantt": gantt or {},
+                "memory_map": memory or {},
+                "stats": stats.get("summary", {}) if stats else {},
+            }
+            self._refresh_current_tab()
 
         log_events = [event for event in result.events if event.get("type") == "log"]
         if log_events:
@@ -416,38 +431,10 @@ class Execute_Tab(QTabWidget):
         state: dict,
     ) -> None:
         snapshot = state.get("snapshot", {})
-        gantt = state.get("gantt", {})
-        memory = state.get("memory_map", {})
-        stats = state.get("stats", {})
-        running_data = state.get("running")
-        running_process = None
-
-        if running_data is not None:
-            running_pid = int(running_data.get("pid", -1))
-            running_process = next(
-                (process for process in processes if process.pid == running_pid),
-                None,
-            )
-
-        self.gantt.set_segments(
-            gantt.get("segments", []),
-            gantt.get("current_time"),
-        )
-        self.memory_map.set_blocks(
-            memory.get("blocks", []),
-            memory.get("total_kb"),
-        )
-        self._fill_metrics(stats)
-        self._fill_stats_table(processes)
-        self._fill_pcb_table(processes)
-        self.set_system_processes(system_processes)
-        self._update_counters(processes)
-        self._update_device_counters(processes)
-        self._update_cpu_panel(
-            processes,
-            gantt.get("segments", []),
-            running_process,
-        )
+        self._last_processes = processes
+        self._last_system_processes = system_processes
+        self._last_state = state
+        self._refresh_current_tab()
 
         simulator_state = int(snapshot.get("simulator_state", 1))
         if simulator_state == 0:
@@ -456,6 +443,52 @@ class Execute_Tab(QTabWidget):
             self.status.setText("Procesos cargados en C")
         else:
             self.status.setText("C esperando procesos")
+
+    def _refresh_current_tab(self, index: int | None = None) -> None:
+        if index is None:
+            index = self.currentIndex()
+
+        processes = self._last_processes
+        system_processes = self._last_system_processes
+        state = self._last_state
+        gantt = state.get("gantt", {})
+        memory = state.get("memory_map", {})
+        stats = state.get("stats", {})
+        segments = gantt.get("segments", [])
+
+        if index == self.EXECUTION_TAB:
+            self.gantt.set_segments(segments, gantt.get("current_time"))
+            self.memory_map.set_blocks(memory.get("blocks", []), memory.get("total_kb"))
+            self._update_counters(processes)
+            self._update_device_counters(processes)
+            self._update_cpu_panel(
+                processes,
+                segments,
+                self._running_process_from_state(processes, state),
+            )
+        elif index == self.STATS_TAB:
+            if stats:
+                self._fill_metrics(stats)
+            self._fill_stats_table(processes)
+        elif index == self.PCB_TAB:
+            self._fill_pcb_table(processes)
+        elif index == self.SYSTEM_TAB:
+            self.set_system_processes(system_processes)
+
+    def _running_process_from_state(
+        self,
+        processes: list[UiProcess],
+        state: dict,
+    ) -> UiProcess | None:
+        running_data = state.get("running")
+        if running_data is None:
+            return None
+
+        running_pid = int(running_data.get("pid", -1))
+        return next(
+            (process for process in processes if process.pid == running_pid),
+            None,
+        )
 
     def _fill_metrics(self, summary: dict) -> None:
         for key, label in self.metrics.items():
@@ -476,73 +509,86 @@ class Execute_Tab(QTabWidget):
                 label.setText(f"{value:.2f}")
 
     def _fill_stats_table(self, processes: list[UiProcess]) -> None:
-        self.stats_table.setRowCount(len(processes))
-        for row, process in enumerate(processes):
-            values = [
-                process.pid,
-                process.name,
-                self._fmt(process.arrival_time),
-                self._fmt(process.burst_time),
-                self._dash(process.start_time),
-                self._dash(process.finish_time),
-                self._fmt(process.ready_time),
-                self._fmt(process.turnaround_time),
-                self._dash(process.response_time),
-                self._memory(process.memory),
-            ]
-            self._set_row(self.stats_table, row, values, process)
+        self.stats_table.setUpdatesEnabled(False)
+        try:
+            self.stats_table.setRowCount(len(processes))
+            for row, process in enumerate(processes):
+                values = [
+                    process.pid,
+                    process.name,
+                    self._fmt(process.arrival_time),
+                    self._fmt(process.burst_time),
+                    self._dash(process.start_time),
+                    self._dash(process.finish_time),
+                    self._fmt(process.ready_time),
+                    self._fmt(process.turnaround_time),
+                    self._dash(process.response_time),
+                    self._memory(process.memory),
+                ]
+                self._set_row(self.stats_table, row, values, process)
+        finally:
+            self.stats_table.setUpdatesEnabled(True)
 
     def _fill_pcb_table(self, processes: list[UiProcess]) -> None:
-        self.pcb_table.setRowCount(len(processes))
-        for row, process in enumerate(processes):
-            values = [
-                process.pid,
-                process.name,
-                STATE_LABELS.get(process.state, process.state),
-                f"0x{process.program_counter:X}",
-                process.memory_block_address,
-                self._memory(process.memory_base),
-                self._memory(process.memory_limit),
-                self._memory(process.memory),
-                "Sí" if process.resident else "No",
-                self._fmt(process.burst_time),
-                self._fmt(process.remaining_time or 0),
-                self._fmt(process.cpu_time),
-                self._fmt(process.ready_time),
-                self._fmt(process.blocked_time),
-                self._fmt(process.nonresident_time),
-                self._fmt(process.arrival_time),
-                self._dash(process.start_time),
-                self._dash(process.finish_time),
-                self._fmt(process.turnaround_time),
-                self._dash(process.response_time),
-                process.interrupts,
-                process.planned_interrupts,
-                self._interrupt_history(process),
-                process.io_device,
-                self._fmt(process.io_remaining),
-                process.context_switches,
-                process.swap_count,
-                (
-                    f"{process.error_code}: {process.error_description}"
-                    if process.error_code
-                    else "--"
-                ),
-                self._dash(process.error_time),
-                process.priority,
-            ]
-            self._set_row(self.pcb_table, row, values, process)
+        self.pcb_table.setUpdatesEnabled(False)
+        try:
+            self.pcb_table.setRowCount(len(processes))
+            for row, process in enumerate(processes):
+                values = [
+                    process.pid,
+                    process.name,
+                    STATE_LABELS.get(process.state, process.state),
+                    f"0x{process.program_counter:X}",
+                    process.memory_block_address,
+                    self._memory(process.memory_base),
+                    self._memory(process.memory_limit),
+                    self._memory(process.memory),
+                    "Sí" if process.resident else "No",
+                    self._fmt(process.burst_time),
+                    self._fmt(process.remaining_time or 0),
+                    self._fmt(process.cpu_time),
+                    self._fmt(process.ready_time),
+                    self._fmt(process.blocked_time),
+                    self._fmt(process.nonresident_time),
+                    self._fmt(process.arrival_time),
+                    self._dash(process.start_time),
+                    self._dash(process.finish_time),
+                    self._fmt(process.turnaround_time),
+                    self._dash(process.response_time),
+                    process.interrupts,
+                    process.planned_interrupts,
+                    self._interrupt_history(process),
+                    process.io_device,
+                    self._fmt(process.io_remaining),
+                    process.context_switches,
+                    process.swap_count,
+                    (
+                        f"{process.error_code}: {process.error_description}"
+                        if process.error_code
+                        else "--"
+                    ),
+                    self._dash(process.error_time),
+                    process.priority,
+                ]
+                self._set_row(self.pcb_table, row, values, process)
+        finally:
+            self.pcb_table.setUpdatesEnabled(True)
 
     def _set_row(self, table: QTableWidget, row: int, values: list, process: UiProcess) -> None:
         for column, value in enumerate(values):
-            item = QTableWidgetItem(str(value))
+            text = str(value)
+            item = table.item(row, column)
+            if item is None:
+                item = QTableWidgetItem()
+                table.setItem(row, column, item)
+            if item.text() != text:
+                item.setText(text)
             if table is self.stats_table:
                 item.setForeground(QColor("#ffffff"))
             elif column == 1:
                 item.setForeground(QColor(process.color))
             elif column == 2:
                 item.setForeground(QColor(STATE_COLORS.get(process.state, "#c9d1d9")))
-            table.setItem(row, column, item)
 
     def _update_counters(self, processes: list[UiProcess]) -> None:
         counts = {key: 0 for key in self.counters}

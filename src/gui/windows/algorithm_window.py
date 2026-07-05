@@ -100,7 +100,7 @@ class AlgorithmWindow(QWidget):
         process_input.btn_start.setText(f"Iniciar {algorithm_label}")
 
         processes = self.client.processes_for(self.algorithm)
-        center.process_queue.set_processes(processes)
+        center.process_table.set_processes(processes)
         center.execute_tab.set_processes(
             processes,
             self.client.system_processes_for(self.algorithm),
@@ -171,7 +171,7 @@ class AlgorithmWindow(QWidget):
             processes,
             self.client.system_processes_for(self.algorithm),
         )
-        self.center.process_queue.set_processes(processes)
+        self.center.process_table.set_processes(processes)
         self._sync_summary(processes)
 
         if result.ok:
@@ -223,7 +223,7 @@ class AlgorithmWindow(QWidget):
         if self.client.is_process_running():
             self.stop_simulation()
         self.client.clear_processes(self.algorithm)
-        self.center.process_queue.clear()
+        self.center.process_table.clear()
         self.center.execute_tab.clear()
         self.center.execute_tab.set_system_processes(
             self.client.system_processes_for(self.algorithm)
@@ -307,7 +307,7 @@ class AlgorithmWindow(QWidget):
             self.center.execute_tab.append_log(result.error, "ERR")
             self.header.set_state("ERROR", "#ff4d6d")
             return
-        self.center.process_queue.set_processes(
+        self.center.process_table.set_processes(
             self.client.processes_for(self.algorithm)
         )
         self._poll_timer.start()
@@ -352,7 +352,7 @@ class AlgorithmWindow(QWidget):
         state = self.client.apply_events(self.algorithm, events)
         processes = self.client.processes_for(self.algorithm)
         system_processes = self.client.system_processes_for(self.algorithm)
-        self.center.process_queue.set_processes(processes)
+        self.center.process_table.set_processes(processes)
         self.center.execute_tab.set_live_state(
             processes,
             system_processes,
@@ -366,7 +366,7 @@ class AlgorithmWindow(QWidget):
 
     def _refresh_process_views(self, status: str) -> None:
         processes = self.client.processes_for(self.algorithm)
-        self.center.process_queue.set_processes(processes)
+        self.center.process_table.set_processes(processes)
         self.center.execute_tab.set_processes(
             processes,
             self.client.system_processes_for(self.algorithm),
