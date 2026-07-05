@@ -235,7 +235,7 @@ class Process_Input(QGroupBox):
 
         if self.alg == "pr":
             self.input_priority = QSpinBox()
-            self.input_priority.setRange(0, 9)
+            self.input_priority.setRange(0, 5)
             self.input_priority.setValue(3)
             form.addRow("Prioridad:", self.input_priority)
 

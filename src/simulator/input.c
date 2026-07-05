@@ -210,7 +210,7 @@ void process_stdin(struct Simulator *s, char *line)
 
 		if ((parsed != 5 && parsed != 8) || mem_kb <= 0 ||
 		    burst <= 0.0 || arrival < 0.0 || priority < 0 ||
-		    priority > 99 ||
+		    priority > 5 ||
 		    !valid_segment_percentages(text_percent, data_percent,
 					       dynamic_percent)) {
 			log_event(s, "ERROR", "ADD inválido: %s", line);

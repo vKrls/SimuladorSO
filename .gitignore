@@ -18,6 +18,8 @@ dist/
 # Archivos del editor y del sistema operativo
 .DS_Store
 **/.DS_Store
+~$*
+**/~$*
 .vscode/
 .idea/
 

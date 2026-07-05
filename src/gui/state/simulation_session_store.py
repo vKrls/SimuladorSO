@@ -110,6 +110,8 @@ class SimulationSessionStore:
                 "snapshot": {},
                 "memory": {},
                 "gantt": {},
+                "memory_history": [],
+                "memory_history_summary": {},
             },
         )
 

@@ -26,7 +26,7 @@
 #define DEFAULT_TEXT_PERCENT 30
 #define DEFAULT_DATA_PERCENT 30
 #define DEFAULT_DYNAMIC_PERCENT 40
-#define BSS_PERCENT_OF_DATA 33
+#define BSS_PERCENT_OF_DATA 33		/* Block Started By Symbol */
 
 enum SimulatorState {
 	SIM_RUN = 0,

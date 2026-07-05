@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -39,6 +40,8 @@ class Execute_Tab(QTabWidget):
     def __init__(self):
         super().__init__()
         self.metrics: dict[str, QLabel] = {}
+        self.memory_metrics: dict[str, QLabel] = {}
+        self.memory_comparison_metrics: dict[str, QLabel] = {}
         self.counters: dict[str, QLabel] = {}
         self.device_counters: dict[str, QLabel] = {}
         self._last_processes: list[UiProcess] = []
@@ -167,7 +170,19 @@ class Execute_Tab(QTabWidget):
             QWidget#statsTab QTableWidget { color: #ffffff; }
             QWidget#statsTab QHeaderView::section { color: #ffffff; }
         """)
-        layout = QVBoxLayout(widget)
+        outer_layout = QVBoxLayout(widget)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+
+        content = QWidget()
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(10)
 
@@ -193,13 +208,66 @@ class Execute_Tab(QTabWidget):
             metrics_layout.addWidget(self._metric_box(key, label, color), index // 3, index % 3)
         layout.addWidget(metrics_group)
 
+        memory_group = QGroupBox("MÉTRICAS DE MEMORIA")
+        memory_layout = QGridLayout(memory_group)
+        memory_layout.setSpacing(8)
+        memory_metrics = [
+            ("memory_used_pct", "Uso RAM", metric_color),
+            ("user_memory_used_pct", "Uso Usuario", metric_color),
+            ("free_memory_mb", "Libre", metric_color),
+            ("largest_free_mb", "Mayor Hueco", metric_color),
+            ("external_fragmentation_pct", "Frag. Externa", metric_color),
+            ("free_holes", "Huecos Libres", metric_color),
+            ("internal_waste_mb", "Desperdicio", metric_color),
+            ("internal_waste_pct", "Desperd. %", metric_color),
+            ("resident_processes", "Procesos en RAM", metric_color),
+            ("nonresident_processes", "No Residentes", metric_color),
+            ("used_blocks", "Bloques Usados", metric_color),
+            ("block_size_kb", "Tamaño Bloque", metric_color),
+        ]
+        for index, (key, label, color) in enumerate(memory_metrics):
+            memory_layout.addWidget(
+                self._memory_metric_box(key, label, color),
+                index // 4,
+                index % 4,
+            )
+        layout.addWidget(memory_group)
+
+        comparison_group = QGroupBox("COMPARACIÓN DE MEMORIA")
+        comparison_layout = QGridLayout(comparison_group)
+        comparison_layout.setSpacing(8)
+        comparison_metrics = [
+            ("avg_external_fragmentation_pct", "Frag. Prom.", metric_color),
+            ("max_external_fragmentation_pct", "Frag. Máx.", metric_color),
+            ("avg_free_holes", "Huecos Prom.", metric_color),
+            ("max_free_holes", "Huecos Máx.", metric_color),
+            ("avg_largest_free_mb", "Hueco Prom.", metric_color),
+            ("min_largest_free_mb", "Hueco Mín.", metric_color),
+            ("peak_user_memory_used_pct", "Uso Usuario Pico", metric_color),
+            ("peak_memory_used_pct", "Uso RAM Pico", metric_color),
+            ("avg_internal_waste_mb", "Desp. Prom.", metric_color),
+            ("max_internal_waste_mb", "Desp. Máx.", metric_color),
+        ]
+        for index, (key, label, color) in enumerate(comparison_metrics):
+            comparison_layout.addWidget(
+                self._memory_comparison_metric_box(key, label, color),
+                index // 5,
+                index % 5,
+            )
+        layout.addWidget(comparison_group)
+
         table_group = QGroupBox("TABLA DE RESULTADOS POR PROCESO")
         table_layout = QVBoxLayout(table_group)
         self.stats_table = QTableWidget()
         headers = ["PID", "Nombre", "Llegada", "Burst", "Inicio", "Fin", "Ready", "TAT", "Resp.", "Memoria"]
         self._configure_table(self.stats_table, headers, stretch=True)
+        self.stats_table.setMinimumHeight(280)
         table_layout.addWidget(self.stats_table)
-        layout.addWidget(table_group, 1)
+        layout.addWidget(table_group)
+        layout.addStretch()
+
+        scroll.setWidget(content)
+        outer_layout.addWidget(scroll)
         return widget
 
     def _metric_box(self, key: str, label: str, color: str) -> QFrame:
@@ -216,6 +284,38 @@ class Execute_Tab(QTabWidget):
         layout.addWidget(value)
         layout.addWidget(text)
         self.metrics[key] = value
+        return frame
+
+    def _memory_metric_box(self, key: str, label: str, color: str) -> QFrame:
+        frame = QFrame()
+        frame.setStyleSheet(f"background: {color}11; border: 1px solid {color}33; border-radius: 4px;")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(10, 6, 10, 6)
+        value = QLabel("--")
+        value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        value.setStyleSheet("color: #ffffff; font-size: 18px; font-weight: bold;")
+        text = QLabel(label)
+        text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        text.setStyleSheet("color: #ffffff; font-size: 8px;")
+        layout.addWidget(value)
+        layout.addWidget(text)
+        self.memory_metrics[key] = value
+        return frame
+
+    def _memory_comparison_metric_box(self, key: str, label: str, color: str) -> QFrame:
+        frame = QFrame()
+        frame.setStyleSheet(f"background: {color}11; border: 1px solid {color}33; border-radius: 4px;")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(10, 6, 10, 6)
+        value = QLabel("--")
+        value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        value.setStyleSheet("color: #ffffff; font-size: 18px; font-weight: bold;")
+        text = QLabel(label)
+        text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        text.setStyleSheet("color: #ffffff; font-size: 8px;")
+        layout.addWidget(value)
+        layout.addWidget(text)
+        self.memory_comparison_metrics[key] = value
         return frame
 
     def _build_pcb_tab(self) -> QWidget:
@@ -369,6 +469,10 @@ class Execute_Tab(QTabWidget):
         self.cpu_progress.setValue(0)
         for value in self.metrics.values():
             value.setText("--")
+        for value in self.memory_metrics.values():
+            value.setText("--")
+        for value in self.memory_comparison_metrics.values():
+            value.setText("--")
         for value in self.counters.values():
             value.setText("0")
         for device, value in self.device_counters.items():
@@ -483,6 +587,10 @@ class Execute_Tab(QTabWidget):
         elif index == self.STATS_TAB:
             if stats:
                 self._fill_metrics(stats)
+            self._fill_memory_metrics(memory, processes, state)
+            self._fill_memory_comparison_metrics(
+                state.get("memory_history_summary", {}),
+            )
             self._fill_stats_table(processes)
         elif index == self.PCB_TAB:
             self._fill_pcb_table(processes)
@@ -521,6 +629,127 @@ class Execute_Tab(QTabWidget):
                 label.setText(str(int(value)))
             else:
                 label.setText(f"{value:.2f}")
+
+    def _fill_memory_metrics(
+        self,
+        memory: dict,
+        processes: list[UiProcess],
+        state: dict,
+    ) -> None:
+        raw_memory = state.get("memory", {})
+        total_kb = int(memory.get("total_kb") or raw_memory.get("total_kb") or 0)
+        free_kb = int(memory.get("free_kb") or raw_memory.get("free_kb") or 0)
+        os_reserved_kb = int(
+            memory.get("os_reserved_kb") or raw_memory.get("os_reserved_kb") or 0
+        )
+        block_size_kb = int(
+            memory.get("block_size_kb") or raw_memory.get("block_size_kb") or 4
+        )
+
+        if total_kb <= 0 or block_size_kb <= 0:
+            for label in self.memory_metrics.values():
+                label.setText("--")
+            return
+
+        free_blocks = self._free_memory_blocks(raw_memory, memory, block_size_kb)
+        largest_free_kb = max((block["size_kb"] for block in free_blocks), default=0)
+        free_holes = len(free_blocks)
+        user_total_kb = max(0, total_kb - os_reserved_kb)
+        used_total_kb = max(0, total_kb - free_kb)
+        used_user_kb = max(0, user_total_kb - free_kb)
+        resident_processes = [
+            process for process in processes
+            if process.resident and process.state != "TERMINATED"
+        ]
+        queues = state.get("queues", {})
+        nonresident_queue = queues.get("nonresident", [])
+        nonresident_count = (
+            len(nonresident_queue)
+            if isinstance(nonresident_queue, list)
+            else sum(
+                1 for process in processes
+                if not process.resident and process.state not in {"NONE", "TERMINATED"}
+            )
+        )
+        internal_waste_kb = sum(process.waste_kb for process in resident_processes)
+        assigned_kb = sum(
+            process.assigned_blocks * block_size_kb
+            for process in resident_processes
+        )
+        total_blocks = total_kb / block_size_kb
+        free_blocks_count = free_kb / block_size_kb
+
+        values = {
+            "memory_used_pct": self._pct(used_total_kb, total_kb),
+            "user_memory_used_pct": self._pct(used_user_kb, user_total_kb),
+            "free_memory_mb": free_kb / 1024,
+            "largest_free_mb": largest_free_kb / 1024,
+            "external_fragmentation_pct": (
+                0.0 if free_kb <= 0 else (free_kb - largest_free_kb) / free_kb * 100
+            ),
+            "free_holes": free_holes,
+            "internal_waste_mb": internal_waste_kb / 1024,
+            "internal_waste_pct": self._pct(internal_waste_kb, assigned_kb),
+            "resident_processes": len(resident_processes),
+            "nonresident_processes": nonresident_count,
+            "used_blocks": max(0, int(total_blocks - free_blocks_count)),
+            "block_size_kb": block_size_kb,
+        }
+
+        for key, label in self.memory_metrics.items():
+            label.setText(self._format_memory_metric(key, values.get(key, 0.0)))
+
+    def _fill_memory_comparison_metrics(self, summary: dict) -> None:
+        if not summary:
+            for label in self.memory_comparison_metrics.values():
+                label.setText("--")
+            return
+
+        for key, label in self.memory_comparison_metrics.items():
+            label.setText(self._format_memory_metric(key, summary.get(key, 0.0)))
+
+    def _free_memory_blocks(
+        self,
+        raw_memory: dict,
+        memory: dict,
+        block_size_kb: int,
+    ) -> list[dict[str, int]]:
+        raw_blocks = raw_memory.get("blocks", [])
+        if isinstance(raw_blocks, list) and raw_blocks:
+            return [
+                {
+                    "size_kb": int(block.get("length_blocks", 0)) * block_size_kb,
+                }
+                for block in raw_blocks
+                if block.get("owner_pid") is None
+            ]
+
+        blocks = memory.get("blocks", [])
+        if not isinstance(blocks, list):
+            return []
+        return [
+            {
+                "size_kb": int(block.get("size_kb", 0)),
+            }
+            for block in blocks
+            if str(block.get("name", "")) == "Libre"
+        ]
+
+    def _format_memory_metric(self, key: str, value: float | int) -> str:
+        if key.endswith("_pct"):
+            return f"{float(value):.1f}%"
+        if key.endswith("_mb"):
+            return f"{float(value):.1f} MB"
+        if key.endswith("_kb"):
+            return f"{int(value)} KB"
+        if key.startswith("avg_") and "holes" in key:
+            return f"{float(value):.1f}"
+        return str(int(value))
+
+    def _pct(self, numerator: float, denominator: float) -> float:
+        if denominator <= 0:
+            return 0.0
+        return numerator / denominator * 100.0
 
     def _fill_stats_table(self, processes: list[UiProcess]) -> None:
         self.stats_table.setUpdatesEnabled(False)
